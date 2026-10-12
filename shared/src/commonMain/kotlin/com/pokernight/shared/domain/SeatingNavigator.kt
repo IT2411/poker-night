@@ -9,10 +9,9 @@ object SeatingNavigator {
      * Filters for active players eligible to receive cards and post blinds.
      * Must have ACTIVE status and a non-zero stack.
      */
-    fun getEligibleActivePlayers(players: List<SessionPlayer>): List<SessionPlayer> =
-        players
-            .filter { it.status == SessionPlayerStatus.ACTIVE && it.currentStack > 0L }
-            .sortedBy { it.seatIndex }
+    fun getEligibleActivePlayers(players: List<SessionPlayer>): List<SessionPlayer> = players
+        .filter { it.status == SessionPlayerStatus.ACTIVE && it.currentStack > 0L }
+        .sortedBy { it.seatIndex }
 
     /**
      * Returns the next active player clockwise from the given reference player.

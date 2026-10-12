@@ -29,11 +29,11 @@ class HandInitializerTest {
                 bigBlind = 20L,
                 dealerPlayerId = p1,
                 players =
-                    listOf(
-                        SessionPlayer(p1, 0, startingStack = 500L, currentStack = 500L),
-                        SessionPlayer(p2, 1, startingStack = 500L, currentStack = 500L),
-                        SessionPlayer(p3, 2, startingStack = 500L, currentStack = 500L),
-                    ),
+                listOf(
+                    SessionPlayer(p1, 0, startingStack = 500L, currentStack = 500L),
+                    SessionPlayer(p2, 1, startingStack = 500L, currentStack = 500L),
+                    SessionPlayer(p3, 2, startingStack = 500L, currentStack = 500L),
+                ),
             )
 
         val result =
@@ -93,11 +93,11 @@ class HandInitializerTest {
                 bigBlind = 20L,
                 dealerPlayerId = p1,
                 players =
-                    listOf(
-                        SessionPlayer(p1, 0, startingStack = 500L, currentStack = 500L),
-                        SessionPlayer(p2, 1, startingStack = 5L, currentStack = 5L),
-                        SessionPlayer(p3, 2, startingStack = 15L, currentStack = 15L),
-                    ),
+                listOf(
+                    SessionPlayer(p1, 0, startingStack = 500L, currentStack = 500L),
+                    SessionPlayer(p2, 1, startingStack = 5L, currentStack = 5L),
+                    SessionPlayer(p3, 2, startingStack = 15L, currentStack = 15L),
+                ),
             )
 
         val result =

@@ -23,20 +23,19 @@ class HandResolutionTest {
     private val p1 = PlayerId("p1")
     private val p2 = PlayerId("p2")
 
-    private fun createStandardSession(): Session =
-        Session(
-            id = SessionId("s1"),
-            name = "Resolution Test",
-            createdAt = 1000L,
-            smallBlind = 10L,
-            bigBlind = 20L,
-            dealerPlayerId = p1,
-            players =
-                listOf(
-                    SessionPlayer(p1, 0, 500L, 500L),
-                    SessionPlayer(p2, 1, 500L, 500L),
-                ),
-        )
+    private fun createStandardSession(): Session = Session(
+        id = SessionId("s1"),
+        name = "Resolution Test",
+        createdAt = 1000L,
+        smallBlind = 10L,
+        bigBlind = 20L,
+        dealerPlayerId = p1,
+        players =
+        listOf(
+            SessionPlayer(p1, 0, 500L, 500L),
+            SessionPlayer(p2, 1, 500L, 500L),
+        ),
+    )
 
     @Test
     fun testHandEvaluatorRanksCorrectly() {
@@ -83,18 +82,18 @@ class HandResolutionTest {
                 currentStreet = Street.RIVER,
                 status = HandStatus.IN_PROGRESS,
                 communityCards =
-                    listOf(
-                        Card.parse("2c"),
-                        Card.parse("3d"),
-                        Card.parse("4h"),
-                        Card.parse("5s"),
-                        Card.parse("9c"),
-                    ),
+                listOf(
+                    Card.parse("2c"),
+                    Card.parse("3d"),
+                    Card.parse("4h"),
+                    Card.parse("5s"),
+                    Card.parse("9c"),
+                ),
                 players =
-                    listOf(
-                        HandPlayer(p1, 0, 500L, 300L, totalContribution = 200L, streetContribution = 0L),
-                        HandPlayer(p2, 1, 500L, 300L, totalContribution = 200L, streetContribution = 0L),
-                    ),
+                listOf(
+                    HandPlayer(p1, 0, 500L, 300L, totalContribution = 200L, streetContribution = 0L),
+                    HandPlayer(p2, 1, 500L, 300L, totalContribution = 200L, streetContribution = 0L),
+                ),
                 startedAt = 1000L,
             )
 
@@ -151,24 +150,24 @@ class HandResolutionTest {
                 status = HandStatus.IN_PROGRESS,
                 communityCards = board,
                 players =
-                    listOf(
-                        HandPlayer(
-                            playerId = p1,
-                            seatIndex = 0,
-                            startingStack = 500L,
-                            remainingStack = 300L,
-                            totalContribution = 200L,
-                            holeCards = listOf(Card.parse("Ac"), Card.parse("9c")),
-                        ),
-                        HandPlayer(
-                            playerId = p2,
-                            seatIndex = 1,
-                            startingStack = 500L,
-                            remainingStack = 300L,
-                            totalContribution = 200L,
-                            holeCards = listOf(Card.parse("Kh"), Card.parse("10d")),
-                        ),
+                listOf(
+                    HandPlayer(
+                        playerId = p1,
+                        seatIndex = 0,
+                        startingStack = 500L,
+                        remainingStack = 300L,
+                        totalContribution = 200L,
+                        holeCards = listOf(Card.parse("Ac"), Card.parse("9c")),
                     ),
+                    HandPlayer(
+                        playerId = p2,
+                        seatIndex = 1,
+                        startingStack = 500L,
+                        remainingStack = 300L,
+                        totalContribution = 200L,
+                        holeCards = listOf(Card.parse("Kh"), Card.parse("10d")),
+                    ),
+                ),
                 startedAt = 1000L,
             )
 
@@ -196,18 +195,18 @@ class HandResolutionTest {
                 currentStreet = Street.SHOWDOWN,
                 status = HandStatus.COMPLETED,
                 communityCards =
-                    listOf(
-                        Card.parse("2c"),
-                        Card.parse("3d"),
-                        Card.parse("4h"),
-                        Card.parse("5s"),
-                        Card.parse("9c"),
-                    ),
+                listOf(
+                    Card.parse("2c"),
+                    Card.parse("3d"),
+                    Card.parse("4h"),
+                    Card.parse("5s"),
+                    Card.parse("9c"),
+                ),
                 players =
-                    listOf(
-                        HandPlayer(p1, 0, 500L, 500L),
-                        HandPlayer(p2, 1, 500L, 500L),
-                    ),
+                listOf(
+                    HandPlayer(p1, 0, 500L, 500L),
+                    HandPlayer(p2, 1, 500L, 500L),
+                ),
                 startedAt = 1000L,
                 completedAt = 2000L,
             )

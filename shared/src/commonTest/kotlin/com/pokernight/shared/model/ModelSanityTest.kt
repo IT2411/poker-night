@@ -125,10 +125,10 @@ class ModelSanityTest {
                 amount = 200L,
                 eligiblePlayerIds = setOf(p1, p2),
                 contributors =
-                    listOf(
-                        ContributorAmount(p1, 100L),
-                        ContributorAmount(p2, 100L),
-                    ),
+                listOf(
+                    ContributorAmount(p1, 100L),
+                    ContributorAmount(p2, 100L),
+                ),
             )
         assertEquals(200L, pot.amount)
 
@@ -142,10 +142,10 @@ class ModelSanityTest {
                 amount = 250L, // Mismatch!
                 eligiblePlayerIds = setOf(p1, p2),
                 contributors =
-                    listOf(
-                        ContributorAmount(p1, 100L),
-                        ContributorAmount(p2, 100L),
-                    ),
+                listOf(
+                    ContributorAmount(p1, 100L),
+                    ContributorAmount(p2, 100L),
+                ),
             )
         }
     }

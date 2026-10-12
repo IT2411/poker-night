@@ -13,7 +13,9 @@ spotless {
     kotlin {
         target("**/*.kt")
         targetExclude("**/build/**")
-        ktlint("1.5.0")
+        ktlint("1.5.0").editorConfigOverride(
+            mapOf("ktlint_function_naming_ignore_when_annotated_with" to "Composable"),
+        )
         trimTrailingWhitespace()
         endWithNewline()
     }

@@ -12,21 +12,16 @@ import com.pokernight.shared.model.PotId
 import com.pokernight.shared.model.PotType
 
 object PotCalculator {
-    /**
-     * Calculates Main and Side pots and uncalled excess refunds from player contributions.
-     */
+
     fun calculatePots(hand: Hand): PotCalculationResult {
         val totalContributionsSum = hand.players.sumOf { it.totalContribution }
         if (totalContributionsSum == 0L) {
             return PotCalculationResult(emptyList(), emptyMap(), 0L, 0L)
         }
 
-        // 1. Calculate Uncalled Excess Refund
-        // Sort contributions descending
-        val sortedContributions =
-            hand.players
-                .map { it.playerId to it.totalContribution }
-                .sortedByDescending { it.second }
+        val sortedContributions = hand.players
+            .map { it.playerId to it.totalContribution }
+            .sortedByDescending { it.second }
 
         val highestContrib = sortedContributions[0].second
         val secondHighestContrib = if (sortedContributions.size > 1) sortedContributions[1].second else 0L
@@ -38,7 +33,6 @@ object PotCalculator {
             effectiveContributions[hp.playerId] = hp.totalContribution
         }
 
-        // If the highest contributor put in more than anyone else could match
         if (highestContrib > secondHighestContrib) {
             val uncalledExcess = highestContrib - secondHighestContrib
             val highestPlayerId = sortedContributions[0].first
@@ -48,14 +42,12 @@ object PotCalculator {
 
         val totalRefunded = refunds.values.sum()
 
-        // 2. Derive pot layers from positive distinct contribution levels
-        val distinctLevels =
-            effectiveContributions.values
-                .filter { it > 0L }
-                .distinct()
-                .sorted()
+        val distinctLevels = effectiveContributions.values
+            .filter { it > 0L }
+            .distinct()
+            .sorted()
 
-        val pots = mutableListOf<Pot>()
+        val rawLayers = mutableListOf<Pot>()
         var previousLevel = 0L
 
         for ((index, level) in distinctLevels.withIndex()) {
@@ -66,13 +58,11 @@ object PotCalculator {
             for (hp in hand.players) {
                 val effectiveAmount = effectiveContributions[hp.playerId] ?: 0L
                 if (effectiveAmount >= level) {
-                    // Contributed the full delta for this layer
                     contributorsAtLevel.add(ContributorAmount(hp.playerId, delta))
                     if (!hp.folded) {
                         eligibleAtLevel.add(hp.playerId)
                     }
                 } else if (effectiveAmount > previousLevel) {
-                    // Partial contribution within this layer
                     val partialAmount = effectiveAmount - previousLevel
                     contributorsAtLevel.add(ContributorAmount(hp.playerId, partialAmount))
                     if (!hp.folded) {
@@ -83,12 +73,11 @@ object PotCalculator {
 
             val potAmount = contributorsAtLevel.sumOf { it.amount }
             if (potAmount > 0L) {
-                val potType = if (pots.isEmpty()) PotType.MAIN else PotType.SIDE
-                pots.add(
+                rawLayers.add(
                     Pot(
-                        id = PotId("${hand.id.value}-pot-${index + 1}"),
+                        id = PotId("${hand.id.value}-layer-${index + 1}"),
                         handId = hand.id,
-                        potType = potType,
+                        potType = PotType.MAIN,
                         layerIndex = index,
                         amount = potAmount,
                         eligiblePlayerIds = eligibleAtLevel,
@@ -99,64 +88,82 @@ object PotCalculator {
             previousLevel = level
         }
 
-        val totalContested = pots.sumOf { it.amount }
+        val mergedPots = mutableListOf<Pot>()
+        for (rawPot in rawLayers) {
+            if (mergedPots.isNotEmpty() && mergedPots.last().eligiblePlayerIds == rawPot.eligiblePlayerIds) {
+                val lastPot = mergedPots.removeAt(mergedPots.size - 1)
+                val combinedContributors = (lastPot.contributors + rawPot.contributors)
+                    .groupBy { it.playerId }
+                    .map { (pId, list) -> ContributorAmount(pId, list.sumOf { it.amount }) }
 
-        // Invariant: Total contributions must strictly reconcile with contested + refunded
+                val combinedPot = lastPot.copy(
+                    amount = lastPot.amount + rawPot.amount,
+                    contributors = combinedContributors,
+                )
+                mergedPots.add(combinedPot)
+            } else {
+                val potType = if (mergedPots.isEmpty()) PotType.MAIN else PotType.SIDE
+                val indexedPot = rawPot.copy(
+                    id = PotId("${hand.id.value}-pot-${mergedPots.size + 1}"),
+                    potType = potType,
+                    layerIndex = mergedPots.size,
+                )
+                mergedPots.add(indexedPot)
+            }
+        }
+
+        val totalContested = mergedPots.sumOf { it.amount }
+
         require(totalContributionsSum == totalContested + totalRefunded) {
             "Accounting mismatch! Sum=$totalContributionsSum, Contested=$totalContested, Refunded=$totalRefunded"
         }
 
         return PotCalculationResult(
-            pots = pots,
+            pots = mergedPots,
             uncalledExcessRefunds = refunds,
             totalContestedChips = totalContested,
             totalRefundedChips = totalRefunded,
         )
     }
 
-    /**
-     * Distributes a pot evenly among winners, awarding odd chips clockwise from the dealer button.
-     */
     fun distributePot(
         pot: Pot,
         winnerPlayerIds: List<PlayerId>,
         dealerPlayerId: PlayerId,
         playersClockwise: List<HandPlayer>,
     ): List<Payout> {
-        require(winnerPlayerIds.isNotEmpty()) { "Cannot distribute pot ${pot.id.value} without winners" }
-        // Verify all winners are actually eligible for this pot
-        val ineligibleWinners = winnerPlayerIds.filter { !pot.eligiblePlayerIds.contains(it) }
+        // Defensive deduplication to guarantee no double-counting
+        val uniqueWinnerIds = winnerPlayerIds.distinct()
+        require(uniqueWinnerIds.isNotEmpty()) { "Cannot distribute pot ${pot.id.value} without winners" }
+
+        val ineligibleWinners = uniqueWinnerIds.filter { !pot.eligiblePlayerIds.contains(it) }
         require(ineligibleWinners.isEmpty()) {
             "Player(s) $ineligibleWinners are not eligible to win pot ${pot.id.value}"
         }
 
-        val share = pot.amount / winnerPlayerIds.size
-        var remainder = pot.amount % winnerPlayerIds.size
+        val share = pot.amount / uniqueWinnerIds.size
+        var remainder = pot.amount % uniqueWinnerIds.size
 
-        // Clockwise distance from dealer to resolve odd chips (FR-41)
-        val orderedWinners = sortWinnersClockwiseFromDealer(winnerPlayerIds, dealerPlayerId, playersClockwise)
-
+        val orderedWinners = sortWinnersClockwiseFromDealer(uniqueWinnerIds, dealerPlayerId, playersClockwise)
         var payoutCounter = 1
         val payouts = mutableListOf<Payout>()
 
         for (winner in orderedWinners) {
-            val oddChip =
-                if (remainder > 0L) {
-                    remainder--
-                    1L
-                } else {
-                    0L
-                }
+            val oddChip = if (remainder > 0L) {
+                remainder--
+                1L
+            } else {
+                0L
+            }
             val totalWinnerAmount = share + oddChip
 
             if (totalWinnerAmount > 0L) {
-                val payoutType =
-                    when {
-                        winnerPlayerIds.size > 1 && oddChip > 0L -> PayoutType.ODD_CHIP
-                        winnerPlayerIds.size > 1 -> PayoutType.SPLIT_POT
-                        pot.contributors.size == 1 -> PayoutType.UNCONTESTED_FOLD
-                        else -> PayoutType.OUTRIGHT_WIN
-                    }
+                val payoutType = when {
+                    uniqueWinnerIds.size > 1 && oddChip > 0L -> PayoutType.ODD_CHIP
+                    uniqueWinnerIds.size > 1 -> PayoutType.SPLIT_POT
+                    pot.contributors.size == 1 -> PayoutType.UNCONTESTED_FOLD
+                    else -> PayoutType.OUTRIGHT_WIN
+                }
 
                 payouts.add(
                     Payout(
@@ -171,7 +178,6 @@ object PotCalculator {
             }
         }
 
-        // Strict conservation check: sum of payouts must match pot amount exactly
         val totalPaid = payouts.sumOf { it.amount }
         require(totalPaid == pot.amount) {
             "Payout sum ($totalPaid) does not equal pot amount (${pot.amount})"

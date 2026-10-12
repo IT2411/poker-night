@@ -64,11 +64,9 @@ class InMemoryHandRepository : HandRepository {
 
     override fun getHand(id: HandId): Hand? = hands[id]
 
-    override fun getHandsForSession(sessionId: SessionId): List<Hand> =
-        hands.values.filter { it.sessionId == sessionId }.sortedBy { it.handNumber }
+    override fun getHandsForSession(sessionId: SessionId): List<Hand> = hands.values.filter { it.sessionId == sessionId }.sortedBy { it.handNumber }
 
-    override fun getActiveHandForSession(sessionId: SessionId): Hand? =
-        hands.values.firstOrNull { it.sessionId == sessionId && it.status != HandStatus.COMPLETED && it.status != HandStatus.CANCELLED }
+    override fun getActiveHandForSession(sessionId: SessionId): Hand? = hands.values.firstOrNull { it.sessionId == sessionId && it.status != HandStatus.COMPLETED && it.status != HandStatus.CANCELLED }
 
     override fun updateHand(hand: Hand) {
         hands[hand.id] = hand
@@ -83,8 +81,7 @@ class InMemoryActionRepository : ActionRepository {
         actions.add(action)
     }
 
-    override fun getActionsForHand(handId: HandId): List<ActionEvent> =
-        actions.filter { it.handId == handId }.sortedBy { it.sequenceNumber }
+    override fun getActionsForHand(handId: HandId): List<ActionEvent> = actions.filter { it.handId == handId }.sortedBy { it.sequenceNumber }
 
     override fun getAction(actionId: ActionId): ActionEvent? = actions.firstOrNull { it.id == actionId }
 }

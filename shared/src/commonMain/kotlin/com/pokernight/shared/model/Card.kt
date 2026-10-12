@@ -14,9 +14,8 @@ enum class Suit(
     ;
 
     companion object {
-        fun fromChar(char: Char): Suit =
-            entries.firstOrNull { it.code.equals(char, ignoreCase = true) || it.symbol == char }
-                ?: throw IllegalArgumentException("Invalid suit character: $char")
+        fun fromChar(char: Char): Suit = entries.firstOrNull { it.code.equals(char, ignoreCase = true) || it.symbol == char }
+            ?: throw IllegalArgumentException("Invalid suit character: $char")
     }
 }
 

@@ -9,11 +9,12 @@ import kotlin.math.max
 import kotlin.math.min
 
 object BettingEngine {
-    /**
-     * Creates the initial BettingState when a hand starts pre-flop after blinds have been posted.
-     */
+
+    const val MIN_CHIP_INCREMENT = 5L
+
     fun createPreFlopState(
         hand: Hand,
+        smallBlind: Long,
         bigBlind: Long,
         firstToActId: PlayerId,
         blindActions: List<ActionEvent>,
@@ -21,9 +22,10 @@ object BettingEngine {
         val highestStreetContribution = hand.players.maxOfOrNull { it.streetContribution } ?: bigBlind
         return BettingState(
             hand = hand,
+            smallBlind = smallBlind,
             bigBlind = bigBlind,
             currentLiveBet = max(bigBlind, highestStreetContribution),
-            minRaiseIncrement = bigBlind,
+            minRaiseIncrement = MIN_CHIP_INCREMENT,
             activePlayerId = firstToActId,
             playersWhoActed = emptySet(),
             isRoundComplete = false,
@@ -32,42 +34,40 @@ object BettingEngine {
         )
     }
 
-    /**
-     * Computes the available legal actions for a given player.
-     */
-    fun getLegalActions(
-        state: BettingState,
-        playerId: PlayerId,
-    ): LegalActions {
-        val player =
-            state.hand.players.firstOrNull { it.playerId == playerId }
-                ?: return LegalActions(playerId, canCheck = false, canFold = false, canCall = false)
+    fun getLegalActions(state: BettingState, playerId: PlayerId): LegalActions {
+        val player = state.hand.players.firstOrNull { it.playerId == playerId }
+            ?: return LegalActions(playerId, canCheck = false, canFold = false, canCall = false)
 
         if (state.isRoundComplete || state.isHandCompleteByFold || player.folded || player.allIn || state.activePlayerId != playerId) {
             return LegalActions(playerId, canCheck = false, canFold = false, canCall = false)
         }
 
+        val otherNonFolded = state.hand.players.filter { !it.folded && it.playerId != player.playerId }
+
         val amountToCall = max(0L, state.currentLiveBet - player.streetContribution)
         val canCheck = amountToCall == 0L
-        val canFold = !canCheck // In standard poker, one can always fold, but folding when check is free is discouraged
+        val canFold = !canCheck
 
         val canCall = amountToCall > 0L && player.remainingStack > 0L
         val actualCallAmount = min(amountToCall, player.remainingStack)
         val isCallAllIn = canCall && actualCallAmount == player.remainingStack
 
         val canAllIn = player.remainingStack > 0L
-        val allInTargetStreet = player.streetContribution + player.remainingStack
+        val playerTotalMaxCommitment = player.streetContribution + player.remainingStack
 
-        // Betting (opening bet when live bet is 0)
         val canBet = state.currentLiveBet == 0L && player.remainingStack > 0L
-        val minBetAmount = if (canBet) min(state.bigBlind, player.remainingStack) else 0L
+        val minBetAmount = if (canBet) min(MIN_CHIP_INCREMENT, player.remainingStack) else 0L
         val maxBetAmount = if (canBet) player.remainingStack else 0L
 
-        // Raising (when facing an existing live bet)
-        val minFullRaiseTo = state.currentLiveBet + state.minRaiseIncrement
-        val canRaise = state.currentLiveBet > 0L && allInTargetStreet > state.currentLiveBet
-        val minRaiseTo = if (canRaise) min(minFullRaiseTo, allInTargetStreet) else 0L
-        val maxRaiseTo = if (canRaise) allInTargetStreet else 0L
+        // Raising requires opponents with chips behind
+        val opponentsCanMatchRaise = otherNonFolded.any {
+            !it.allIn && (it.streetContribution + it.remainingStack) > state.currentLiveBet
+        }
+        val canRaise = state.currentLiveBet > 0L && opponentsCanMatchRaise && playerTotalMaxCommitment > state.currentLiveBet
+
+        val minFullRaiseTo = state.currentLiveBet + MIN_CHIP_INCREMENT
+        val minRaiseTo = if (canRaise) min(minFullRaiseTo, playerTotalMaxCommitment) else 0L
+        val maxRaiseTo = if (canRaise) playerTotalMaxCommitment else 0L
 
         return LegalActions(
             playerId = playerId,
@@ -87,9 +87,6 @@ object BettingEngine {
         )
     }
 
-    /**
-     * Applies a player action, validating rules and updating the state deterministically.
-     */
     fun applyAction(
         state: BettingState,
         request: PlayerActionRequest,
@@ -108,45 +105,39 @@ object BettingEngine {
 
         return when (request.actionType) {
             ActionType.CHECK -> {
-                require(
-                    legal.canCheck,
-                ) { "Cannot check when facing a bet. Amount to call is ${state.currentLiveBet - player.streetContribution}" }
-                val event =
-                    ActionEvent(
-                        id = actionId,
-                        handId = state.hand.id,
-                        sequenceNumber = seq,
-                        playerId = player.playerId,
-                        street = state.hand.currentStreet,
-                        actionType = ActionType.CHECK,
-                        amount = 0L,
-                        toTotalStreetAmount = player.streetContribution,
-                        createdAt = timestamp,
-                    )
+                require(legal.canCheck) { "Cannot check when facing a bet" }
+                val event = ActionEvent(
+                    id = actionId,
+                    handId = state.hand.id,
+                    sequenceNumber = seq,
+                    playerId = player.playerId,
+                    street = state.hand.currentStreet,
+                    actionType = ActionType.CHECK,
+                    amount = 0L,
+                    toTotalStreetAmount = player.streetContribution,
+                    createdAt = timestamp,
+                )
                 val updatedActed = state.playersWhoActed + player.playerId
                 advanceState(state, state.hand, updatedActed, state.currentLiveBet, state.minRaiseIncrement, event)
             }
 
             ActionType.FOLD -> {
-                val event =
-                    ActionEvent(
-                        id = actionId,
-                        handId = state.hand.id,
-                        sequenceNumber = seq,
-                        playerId = player.playerId,
-                        street = state.hand.currentStreet,
-                        actionType = ActionType.FOLD,
-                        amount = 0L,
-                        toTotalStreetAmount = player.streetContribution,
-                        createdAt = timestamp,
-                    )
-                val updatedPlayers =
-                    state.hand.players.map {
-                        if (it.playerId == player.playerId) it.copy(folded = true) else it
-                    }
+                val event = ActionEvent(
+                    id = actionId,
+                    handId = state.hand.id,
+                    sequenceNumber = seq,
+                    playerId = player.playerId,
+                    street = state.hand.currentStreet,
+                    actionType = ActionType.FOLD,
+                    amount = 0L,
+                    toTotalStreetAmount = player.streetContribution,
+                    createdAt = timestamp,
+                )
+                val updatedPlayers = state.hand.players.map {
+                    if (it.playerId == player.playerId) it.copy(folded = true) else it
+                }
                 val nonFolded = updatedPlayers.filter { !it.folded }
                 if (nonFolded.size == 1) {
-                    // Everyone else folded: hand is immediately won by the last remaining player
                     return state.copy(
                         hand = state.hand.copy(players = updatedPlayers),
                         isRoundComplete = true,
@@ -168,31 +159,28 @@ object BettingEngine {
                 val newStreetContr = player.streetContribution + callAmount
                 val isAllIn = newRemaining == 0L
 
-                val updatedPlayer =
-                    player.copy(
-                        remainingStack = newRemaining,
-                        totalContribution = newTotalContr,
-                        streetContribution = newStreetContr,
-                        allIn = isAllIn,
-                    )
+                val updatedPlayer = player.copy(
+                    remainingStack = newRemaining,
+                    totalContribution = newTotalContr,
+                    streetContribution = newStreetContr,
+                    allIn = isAllIn,
+                )
 
-                val event =
-                    ActionEvent(
-                        id = actionId,
-                        handId = state.hand.id,
-                        sequenceNumber = seq,
-                        playerId = player.playerId,
-                        street = state.hand.currentStreet,
-                        actionType = if (isAllIn) ActionType.ALL_IN else ActionType.CALL,
-                        amount = callAmount,
-                        toTotalStreetAmount = newStreetContr,
-                        createdAt = timestamp,
-                    )
+                val event = ActionEvent(
+                    id = actionId,
+                    handId = state.hand.id,
+                    sequenceNumber = seq,
+                    playerId = player.playerId,
+                    street = state.hand.currentStreet,
+                    actionType = if (isAllIn) ActionType.ALL_IN else ActionType.CALL,
+                    amount = callAmount,
+                    toTotalStreetAmount = newStreetContr,
+                    createdAt = timestamp,
+                )
 
-                val updatedPlayers =
-                    state.hand.players.map {
-                        if (it.playerId == player.playerId) updatedPlayer else it
-                    }
+                val updatedPlayers = state.hand.players.map {
+                    if (it.playerId == player.playerId) updatedPlayer else it
+                }
                 val updatedHand = state.hand.copy(players = updatedPlayers)
                 val updatedActed = state.playersWhoActed + player.playerId
                 advanceState(state, updatedHand, updatedActed, state.currentLiveBet, state.minRaiseIncrement, event)
@@ -210,35 +198,31 @@ object BettingEngine {
                 val newStreetContr = player.streetContribution + betAmount
                 val isAllIn = newRemaining == 0L
 
-                val updatedPlayer =
-                    player.copy(
-                        remainingStack = newRemaining,
-                        totalContribution = newTotalContr,
-                        streetContribution = newStreetContr,
-                        allIn = isAllIn,
-                    )
+                val updatedPlayer = player.copy(
+                    remainingStack = newRemaining,
+                    totalContribution = newTotalContr,
+                    streetContribution = newStreetContr,
+                    allIn = isAllIn,
+                )
 
-                val event =
-                    ActionEvent(
-                        id = actionId,
-                        handId = state.hand.id,
-                        sequenceNumber = seq,
-                        playerId = player.playerId,
-                        street = state.hand.currentStreet,
-                        actionType = if (isAllIn) ActionType.ALL_IN else ActionType.BET,
-                        amount = betAmount,
-                        toTotalStreetAmount = newStreetContr,
-                        createdAt = timestamp,
-                    )
+                val event = ActionEvent(
+                    id = actionId,
+                    handId = state.hand.id,
+                    sequenceNumber = seq,
+                    playerId = player.playerId,
+                    street = state.hand.currentStreet,
+                    actionType = if (isAllIn) ActionType.ALL_IN else ActionType.BET,
+                    amount = betAmount,
+                    toTotalStreetAmount = newStreetContr,
+                    createdAt = timestamp,
+                )
 
-                val updatedPlayers =
-                    state.hand.players.map {
-                        if (it.playerId == player.playerId) updatedPlayer else it
-                    }
+                val updatedPlayers = state.hand.players.map {
+                    if (it.playerId == player.playerId) updatedPlayer else it
+                }
                 val updatedHand = state.hand.copy(players = updatedPlayers)
-                // Opening bet reopens action to all other non-folded players
                 val updatedActed = setOf(player.playerId)
-                val newMinIncrement = max(state.bigBlind, betAmount)
+                val newMinIncrement = max(MIN_CHIP_INCREMENT, betAmount)
                 advanceState(state, updatedHand, updatedActed, newStreetContr, newMinIncrement, event)
             }
 
@@ -250,49 +234,37 @@ object BettingEngine {
                 }
 
                 val addedAmount = target - player.streetContribution
-                require(addedAmount in 1L..player.remainingStack) { "Illegal raise chip addition: $addedAmount" }
+                require(addedAmount in 1L..player.remainingStack) { "Illegal raise addition: $addedAmount" }
 
                 val newRemaining = player.remainingStack - addedAmount
                 val isAllIn = newRemaining == 0L
                 val raiseDiff = target - state.currentLiveBet
-                val isFullRaise = raiseDiff >= state.minRaiseIncrement
+                val isFullRaise = raiseDiff >= MIN_CHIP_INCREMENT
 
-                val updatedPlayer =
-                    player.copy(
-                        remainingStack = newRemaining,
-                        totalContribution = player.totalContribution + addedAmount,
-                        streetContribution = target,
-                        allIn = isAllIn,
-                    )
+                val updatedPlayer = player.copy(
+                    remainingStack = newRemaining,
+                    totalContribution = player.totalContribution + addedAmount,
+                    streetContribution = target,
+                    allIn = isAllIn,
+                )
 
-                val event =
-                    ActionEvent(
-                        id = actionId,
-                        handId = state.hand.id,
-                        sequenceNumber = seq,
-                        playerId = player.playerId,
-                        street = state.hand.currentStreet,
-                        actionType = if (isAllIn) ActionType.ALL_IN else ActionType.RAISE,
-                        amount = addedAmount,
-                        toTotalStreetAmount = target,
-                        createdAt = timestamp,
-                    )
+                val event = ActionEvent(
+                    id = actionId,
+                    handId = state.hand.id,
+                    sequenceNumber = seq,
+                    playerId = player.playerId,
+                    street = state.hand.currentStreet,
+                    actionType = if (isAllIn) ActionType.ALL_IN else ActionType.RAISE,
+                    amount = addedAmount,
+                    toTotalStreetAmount = target,
+                    createdAt = timestamp,
+                )
 
-                val updatedPlayers =
-                    state.hand.players.map {
-                        if (it.playerId == player.playerId) updatedPlayer else it
-                    }
+                val updatedPlayers = state.hand.players.map {
+                    if (it.playerId == player.playerId) updatedPlayer else it
+                }
                 val updatedHand = state.hand.copy(players = updatedPlayers)
-
-                // If full raise: reset acted players to re-open betting.
-                // If short all-in raise: only the raiser is recorded; players who already acted at the previous full level cannot re-raise, but must still call.
-                val updatedActed =
-                    if (isFullRaise) {
-                        setOf(player.playerId)
-                    } else {
-                        state.playersWhoActed + player.playerId
-                    }
-
+                val updatedActed = if (isFullRaise) setOf(player.playerId) else state.playersWhoActed + player.playerId
                 val newMinIncrement = if (isFullRaise) raiseDiff else state.minRaiseIncrement
                 advanceState(state, updatedHand, updatedActed, target, newMinIncrement, event)
             }
@@ -303,15 +275,15 @@ object BettingEngine {
                 val targetStreet = player.streetContribution + allInAdded
 
                 if (state.currentLiveBet == 0L) {
-                    applyAction(state, PlayerActionRequest(player.playerId, ActionType.BET, targetStreet), timestamp)
-                } else if (targetStreet > state.currentLiveBet) {
-                    applyAction(state, PlayerActionRequest(player.playerId, ActionType.RAISE, targetStreet), timestamp)
+                    applyAction(state, PlayerActionRequest(player.playerId, ActionType.BET, min(targetStreet, legal.maxBetAmount)), timestamp)
+                } else if (targetStreet > state.currentLiveBet && legal.canRaise) {
+                    applyAction(state, PlayerActionRequest(player.playerId, ActionType.RAISE, min(targetStreet, legal.maxRaiseTo)), timestamp)
                 } else {
                     applyAction(state, PlayerActionRequest(player.playerId, ActionType.CALL), timestamp)
                 }
             }
 
-            else -> throw IllegalArgumentException("Unsupported live betting action: ${request.actionType}")
+            else -> throw IllegalArgumentException("Unsupported action: ${request.actionType}")
         }
     }
 
@@ -326,20 +298,11 @@ object BettingEngine {
         val nonFolded = updatedHand.players.filter { !it.folded }
         val eligibleToAct = nonFolded.filter { !it.allIn }
 
-        // Round completes when:
-        // 1. At most 1 player has chips remaining and all non-folded players have matched the live bet (or are all-in)
-        // 2. All eligible players have acted AND their street contributions match the live bet
         val allMatched = nonFolded.all { it.allIn || it.streetContribution == currentLiveBet }
         val allEligibleHaveActed = eligibleToAct.all { updatedActed.contains(it.playerId) }
 
         val roundFinished = (allMatched && allEligibleHaveActed) || eligibleToAct.size <= 1 && allMatched
-
-        val nextActor =
-            if (roundFinished) {
-                null
-            } else {
-                findNextActorClockwise(updatedHand, state.activePlayerId!!)
-            }
+        val nextActor = if (roundFinished) null else findNextActorClockwise(updatedHand, state.activePlayerId!!)
 
         return state.copy(
             hand = updatedHand,
@@ -352,10 +315,7 @@ object BettingEngine {
         )
     }
 
-    private fun findNextActorClockwise(
-        hand: Hand,
-        currentActorId: PlayerId,
-    ): PlayerId? {
+    private fun findNextActorClockwise(hand: Hand, currentActorId: PlayerId): PlayerId? {
         val sorted = hand.players.sortedBy { it.seatIndex }
         val currentIndex = sorted.indexOfFirst { it.playerId == currentActorId }
         val count = sorted.size

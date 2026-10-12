@@ -41,9 +41,8 @@ class SessionPersistenceService(
         dealerId: PlayerId,
         timestamp: Long,
     ): BettingState {
-        val session =
-            sessionRepo.getSession(sessionId)
-                ?: throw IllegalArgumentException("Session not found: ${sessionId.value}")
+        val session = sessionRepo.getSession(sessionId)
+            ?: throw IllegalArgumentException("Session not found: ${sessionId.value}")
 
         val handId = HandId("${sessionId.value}-hand-$handNumber")
         val initResult = HandInitializer.initializeHand(session, handId, handNumber, dealerId, timestamp)
@@ -55,6 +54,7 @@ class SessionPersistenceService(
 
         return BettingEngine.createPreFlopState(
             hand = initResult.hand,
+            smallBlind = session.smallBlind,
             bigBlind = session.bigBlind,
             firstToActId = initResult.positions.firstToActPreFlopId,
             blindActions = initResult.initialActions,
@@ -75,10 +75,7 @@ class SessionPersistenceService(
         return newState
     }
 
-    fun undoLastAction(
-        currentState: BettingState,
-        timestamp: Long,
-    ): BettingState {
+    fun undoLastAction(currentState: BettingState, timestamp: Long): BettingState {
         val actions = actionRepo.getActionsForHand(currentState.hand.id)
         val effective = StateReplayer.filterEffectiveActions(actions)
 
@@ -87,29 +84,27 @@ class SessionPersistenceService(
         val actionToUndo = effective.last()
         val reversalId = ActionId("${actionToUndo.id.value}-reversal")
 
-        val reversalEvent =
-            ActionEvent(
-                id = reversalId,
-                handId = currentState.hand.id,
-                sequenceNumber = actions.size + 1,
-                playerId = actionToUndo.playerId,
-                street = actionToUndo.street,
-                actionType = actionToUndo.actionType,
-                amount = actionToUndo.amount,
-                toTotalStreetAmount = actionToUndo.toTotalStreetAmount,
-                createdAt = timestamp,
-                reversalOfActionId = actionToUndo.id,
-            )
+        val reversalEvent = ActionEvent(
+            id = reversalId,
+            handId = currentState.hand.id,
+            sequenceNumber = actions.size + 1,
+            playerId = actionToUndo.playerId,
+            street = actionToUndo.street,
+            actionType = actionToUndo.actionType,
+            amount = actionToUndo.amount,
+            toTotalStreetAmount = actionToUndo.toTotalStreetAmount,
+            createdAt = timestamp,
+            reversalOfActionId = actionToUndo.id,
+        )
 
         actionRepo.appendAction(reversalEvent)
 
         val session = sessionRepo.getSession(currentState.hand.sessionId)!!
-        val reconstructed =
-            StateReplayer.replayHand(
-                session = session,
-                initialHandTemplate = currentState.hand,
-                allActions = actionRepo.getActionsForHand(currentState.hand.id),
-            )
+        val reconstructed = StateReplayer.replayHand(
+            session = session,
+            initialHandTemplate = currentState.hand,
+            allActions = actionRepo.getActionsForHand(currentState.hand.id),
+        )
         handRepo.updateHand(reconstructed.hand)
 
         return reconstructed
@@ -125,9 +120,8 @@ class SessionPersistenceService(
     }
 
     fun exportSessionToJson(sessionId: SessionId): String {
-        val session =
-            sessionRepo.getSession(sessionId)
-                ?: throw IllegalArgumentException("Session not found: ${sessionId.value}")
+        val session = sessionRepo.getSession(sessionId)
+            ?: throw IllegalArgumentException("Session not found: ${sessionId.value}")
         val hands = handRepo.getHandsForSession(sessionId)
         val allActions = hands.flatMap { actionRepo.getActionsForHand(it.id) }
 

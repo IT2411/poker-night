@@ -12,18 +12,12 @@ import com.pokernight.shared.model.Session
 import com.pokernight.shared.model.Street
 
 object StateReplayer {
-    /**
-     * Filters out actions that were explicitly undone by a reversal action.
-     */
+
     fun filterEffectiveActions(actions: List<ActionEvent>): List<ActionEvent> {
         val reversedIds = actions.mapNotNull { it.reversalOfActionId }.toSet()
-        // Omit both the reversed actions and the reversal tombstones themselves
         return actions.filter { !reversedIds.contains(it.id) && it.reversalOfActionId == null }
     }
 
-    /**
-     * Reconstructs the exact BettingState by replaying effective actions from the beginning of the hand.
-     */
     fun replayHand(
         session: Session,
         initialHandTemplate: Hand,
@@ -31,46 +25,40 @@ object StateReplayer {
     ): BettingState {
         val effective = filterEffectiveActions(allActions)
 
-        // Initialize fresh pre-flop hand
-        val initResult =
-            HandInitializer.initializeHand(
-                session = session,
-                handId = initialHandTemplate.id,
-                handNumber = initialHandTemplate.handNumber,
-                dealerId = initialHandTemplate.dealerPlayerId,
-                timestamp = initialHandTemplate.startedAt,
-            )
+        val initResult = HandInitializer.initializeHand(
+            session = session,
+            handId = initialHandTemplate.id,
+            handNumber = initialHandTemplate.handNumber,
+            dealerId = initialHandTemplate.dealerPlayerId,
+            timestamp = initialHandTemplate.startedAt,
+        )
 
-        var state =
-            BettingEngine.createPreFlopState(
-                hand = initResult.hand,
-                bigBlind = session.bigBlind,
-                firstToActId = initResult.positions.firstToActPreFlopId,
-                blindActions = initResult.initialActions,
-            )
+        var state = BettingEngine.createPreFlopState(
+            hand = initResult.hand,
+            smallBlind = session.smallBlind,
+            bigBlind = session.bigBlind,
+            firstToActId = initResult.positions.firstToActPreFlopId,
+            blindActions = initResult.initialActions,
+        )
 
-        // The first 2 actions in effective log are the blind postings
         val bettingActions = effective.drop(initResult.initialActions.size)
-
         var currentCommunityCardIndex = 0
 
         for (action in bettingActions) {
-            val req =
-                when (action.actionType) {
-                    ActionType.CHECK -> PlayerActionRequest(action.playerId, ActionType.CHECK)
-                    ActionType.FOLD -> PlayerActionRequest(action.playerId, ActionType.FOLD)
-                    ActionType.CALL -> PlayerActionRequest(action.playerId, ActionType.CALL)
-                    ActionType.BET -> PlayerActionRequest(action.playerId, ActionType.BET, action.amount)
-                    ActionType.RAISE -> PlayerActionRequest(action.playerId, ActionType.RAISE, action.toTotalStreetAmount)
-                    ActionType.ALL_IN -> PlayerActionRequest(action.playerId, ActionType.ALL_IN)
-                    else -> null
-                }
+            val req = when (action.actionType) {
+                ActionType.CHECK -> PlayerActionRequest(action.playerId, ActionType.CHECK)
+                ActionType.FOLD -> PlayerActionRequest(action.playerId, ActionType.FOLD)
+                ActionType.CALL -> PlayerActionRequest(action.playerId, ActionType.CALL)
+                ActionType.BET -> PlayerActionRequest(action.playerId, ActionType.BET, action.amount)
+                ActionType.RAISE -> PlayerActionRequest(action.playerId, ActionType.RAISE, action.toTotalStreetAmount)
+                ActionType.ALL_IN -> PlayerActionRequest(action.playerId, ActionType.ALL_IN)
+                else -> null
+            }
 
             if (req != null) {
                 state = BettingEngine.applyAction(state, req, action.createdAt)
             }
 
-            // Auto-advance street if round completed and cards exist on the template
             if (state.isRoundComplete && !state.isHandCompleteByFold && initialHandTemplate.communityCards.isNotEmpty()) {
                 state = advanceIfApplicable(state, initialHandTemplate, currentCommunityCardIndex)
                 currentCommunityCardIndex = state.hand.communityCards.size
@@ -108,9 +96,7 @@ object StateReplayer {
                     state
                 }
             }
-            Street.RIVER -> {
-                StreetManager.advanceToShowdown(state)
-            }
+            Street.RIVER -> StreetManager.advanceToShowdown(state)
             Street.SHOWDOWN -> state
         }
     }

@@ -33,11 +33,11 @@ class PersistenceAndRecoveryTest {
                 bigBlind = 20L,
                 dealerPlayerId = p1,
                 players =
-                    listOf(
-                        SessionPlayer(p1, 0, 500L, 500L),
-                        SessionPlayer(p2, 1, 500L, 500L),
-                        SessionPlayer(p3, 2, 500L, 500L),
-                    ),
+                listOf(
+                    SessionPlayer(p1, 0, 500L, 500L),
+                    SessionPlayer(p2, 1, 500L, 500L),
+                    SessionPlayer(p3, 2, 500L, 500L),
+                ),
             )
         service.createSession(session)
         return service to session
@@ -92,11 +92,11 @@ class PersistenceAndRecoveryTest {
                 bigBlind = 20L,
                 dealerPlayerId = p1,
                 players =
-                    listOf(
-                        SessionPlayer(p1, 0, 500L, 500L),
-                        SessionPlayer(p2, 1, 500L, 500L),
-                        SessionPlayer(p3, 2, 500L, 500L),
-                    ),
+                listOf(
+                    SessionPlayer(p1, 0, 500L, 500L),
+                    SessionPlayer(p2, 1, 500L, 500L),
+                    SessionPlayer(p3, 2, 500L, 500L),
+                ),
             )
         service.createSession(session)
 

@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class BettingState(
     val hand: Hand,
+    val smallBlind: Long,
     val bigBlind: Long,
     val currentLiveBet: Long,
     val minRaiseIncrement: Long,
