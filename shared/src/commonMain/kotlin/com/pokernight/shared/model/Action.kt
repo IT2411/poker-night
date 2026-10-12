@@ -44,25 +44,28 @@ data class ActionEvent(
         require(toTotalStreetAmount >= 0L) { "toTotalStreetAmount cannot be negative: $toTotalStreetAmount" }
         require(createdAt > 0L) { "Action createdAt timestamp must be positive" }
 
-        when (actionType) {
-            ActionType.CHECK, ActionType.FOLD, ActionType.MUCK_CARDS -> {
-                require(amount == 0L) { "$actionType cannot carry a chip amount" }
+        // Only enforce non-zero amount on live actions (not on reversal audit tombstones)
+        if (reversalOfActionId == null) {
+            when (actionType) {
+                ActionType.CHECK, ActionType.FOLD, ActionType.MUCK_CARDS -> {
+                    require(amount == 0L) { "$actionType cannot carry a chip amount" }
+                }
+                ActionType.POST_SMALL_BLIND,
+                ActionType.POST_BIG_BLIND,
+                ActionType.CALL,
+                ActionType.BET,
+                ActionType.RAISE,
+                ActionType.ALL_IN,
+                -> {
+                    require(amount > 0L) { "$actionType must have a positive chip contribution amount" }
+                }
+                ActionType.SHOW_CARDS -> Unit
             }
-            ActionType.POST_SMALL_BLIND,
-            ActionType.POST_BIG_BLIND,
-            ActionType.CALL,
-            ActionType.BET,
-            ActionType.RAISE,
-            ActionType.ALL_IN,
-            -> {
-                require(amount > 0L) { "$actionType must have a positive chip contribution amount" }
-            }
-            ActionType.SHOW_CARDS -> Unit
-        }
 
-        if (actionType == ActionType.RAISE || actionType == ActionType.BET) {
-            require(toTotalStreetAmount >= amount) {
-                "Target street amount ($toTotalStreetAmount) must be >= incremental amount ($amount)"
+            if (actionType == ActionType.RAISE || actionType == ActionType.BET) {
+                require(toTotalStreetAmount >= amount) {
+                    "Target street amount ($toTotalStreetAmount) must be >= incremental amount ($amount)"
+                }
             }
         }
     }
