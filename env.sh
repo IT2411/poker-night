@@ -28,9 +28,16 @@ if [ -n "$ANDROID_HOME" ]; then
     export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
 fi
 
-# 4. Write local.properties for Gradle if ANDROID_HOME is set
+# 4. Create local.properties only if it does not already exist
 if [ -n "$ANDROID_HOME" ] && [ -d "$ANDROID_HOME" ]; then
-    echo "sdk.dir=$ANDROID_HOME" > local.properties
+    if [ ! -f local.properties ]; then
+        printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
+        echo "Created local.properties"
+    else
+        echo "local.properties already exists; leaving it unchanged."
+    fi
+else
+    echo "Android SDK not found; skipping local.properties creation."
 fi
 
 echo "=== Environment Loaded ==="
