@@ -13,27 +13,48 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MonetizationOn
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -42,6 +63,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,10 +75,13 @@ import androidx.compose.ui.unit.sp
 import com.pokernight.shared.domain.betting.LegalActions
 import com.pokernight.shared.model.ActionType
 import com.pokernight.shared.model.Card
+import com.pokernight.shared.model.LenderType
 import com.pokernight.shared.model.PlayerId
 import com.pokernight.shared.model.PotId
+import com.pokernight.shared.model.SessionPlayerStatus
 import com.pokernight.shared.model.Street
 import com.pokernight.shared.model.Suit
+import kotlinx.coroutines.launch
 
 private val PokerDarkScheme = darkColorScheme(
     primary = Color(0xFF4CAF50),
@@ -73,6 +98,9 @@ private val PokerDarkScheme = darkColorScheme(
 fun PokerApp(viewModel: PokerViewModel) {
     val state by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    var showResetDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
@@ -81,54 +109,190 @@ fun PokerApp(viewModel: PokerViewModel) {
         }
     }
 
-    MaterialTheme(colorScheme = PokerDarkScheme) {
-        Scaffold(
-            snackbarHost = { SnackbarHost(snackbarHostState) },
-            topBar = {
-                TopAppBar(
-                    title = {
-                        val handNum = state.liveState?.hand?.handNumber ?: 1
-                        Text(
-                            text = when (state.currentScreen) {
-                                CurrentScreen.SETUP -> "Poker Night — Setup"
-                                CurrentScreen.LIVE_HAND -> "${state.session?.name ?: "Game"} — Hand #$handNum"
-                                CurrentScreen.POT_BREAKDOWN -> "Pot Breakdown"
-                                CurrentScreen.SHOWDOWN -> "Showdown & Winners"
-                                CurrentScreen.HISTORY -> "Session History"
-                            },
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                        )
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = Color(0xFF1B3B22),
-                        titleContentColor = Color.White,
-                    ),
-                    actions = {
-                        if (state.session != null && state.currentScreen != CurrentScreen.SETUP) {
-                            Button(
-                                onClick = { viewModel.navigateTo(CurrentScreen.POT_BREAKDOWN) },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                            ) {
-                                Text("Pots", color = Color.White)
-                            }
-                        }
-                    },
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { showResetDialog = false },
+            title = { Text("Reset Session?", color = Color.White, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Are you sure you want to cancel the entire session? All current hands and chip stacks will be reset.",
+                    color = Color.LightGray,
                 )
             },
-        ) { padding ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .background(Color(0xFF0F1A12)),
-            ) {
-                when (state.currentScreen) {
-                    CurrentScreen.SETUP -> SessionSetupScreen(viewModel)
-                    CurrentScreen.LIVE_HAND -> LiveHandScreen(viewModel)
-                    CurrentScreen.POT_BREAKDOWN -> PotBreakdownScreen(viewModel)
-                    CurrentScreen.SHOWDOWN -> ShowdownScreen(viewModel)
-                    CurrentScreen.HISTORY -> HistoryScreen(viewModel)
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResetDialog = false
+                        viewModel.resetEntireSession()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
+                ) {
+                    Text("Confirm Reset", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }) {
+                    Text("Cancel", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF1E2F23),
+        )
+    }
+
+    MaterialTheme(colorScheme = PokerDarkScheme) {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            gesturesEnabled = state.currentScreen != CurrentScreen.SETUP,
+            drawerContent = {
+                ModalDrawerSheet(
+                    drawerContainerColor = Color(0xFF16251A),
+                    drawerContentColor = Color.White,
+                ) {
+                    Text(
+                        text = "Poker Night ♠️",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFFD54F),
+                        modifier = Modifier.padding(18.dp),
+                    )
+                    HorizontalDivider(color = Color(0xFF2E4532))
+
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.PlayArrow, contentDescription = null, tint = Color(0xFF81C784)) },
+                        label = { Text("Live Poker Table", fontWeight = FontWeight.SemiBold) },
+                        selected = state.currentScreen == CurrentScreen.LIVE_HAND || state.currentScreen == CurrentScreen.INTERMISSION,
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                            if (state.liveState != null) {
+                                viewModel.navigateTo(CurrentScreen.LIVE_HAND)
+                            } else {
+                                viewModel.navigateTo(CurrentScreen.INTERMISSION)
+                            }
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF2E7D32),
+                            unselectedContainerColor = Color.Transparent,
+                            selectedTextColor = Color.White,
+                            unselectedTextColor = Color.LightGray,
+                        ),
+                    )
+
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.MonetizationOn, contentDescription = null, tint = Color(0xFFFFD54F)) },
+                        label = { Text("Pot Breakdown", fontWeight = FontWeight.SemiBold) },
+                        selected = state.currentScreen == CurrentScreen.POT_BREAKDOWN,
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                            viewModel.navigateTo(CurrentScreen.POT_BREAKDOWN)
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF2E7D32),
+                            unselectedContainerColor = Color.Transparent,
+                            selectedTextColor = Color.White,
+                            unselectedTextColor = Color.LightGray,
+                        ),
+                    )
+
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.History, contentDescription = null, tint = Color(0xFF64B5F6)) },
+                        label = { Text("Session Hand History", fontWeight = FontWeight.SemiBold) },
+                        selected = state.currentScreen == CurrentScreen.HISTORY,
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                            viewModel.navigateTo(CurrentScreen.HISTORY)
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF2E7D32),
+                            unselectedContainerColor = Color.Transparent,
+                            selectedTextColor = Color.White,
+                            unselectedTextColor = Color.LightGray,
+                        ),
+                    )
+
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.AccountBalance, contentDescription = null, tint = Color(0xFFFFB74D)) },
+                        label = { Text("Loans & Bank (0-10%)", fontWeight = FontWeight.SemiBold) },
+                        selected = state.currentScreen == CurrentScreen.LOANS,
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                            viewModel.navigateTo(CurrentScreen.LOANS)
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(
+                            selectedContainerColor = Color(0xFF2E7D32),
+                            unselectedContainerColor = Color.Transparent,
+                            selectedTextColor = Color.White,
+                            unselectedTextColor = Color.LightGray,
+                        ),
+                    )
+
+                    Spacer(modifier = Modifier.weight(1f))
+                    HorizontalDivider(color = Color(0xFF2E4532))
+
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.RestartAlt, contentDescription = null, tint = Color(0xFFE57373)) },
+                        label = { Text("Reset / Cancel Session", color = Color(0xFFEF5350), fontWeight = FontWeight.Bold) },
+                        selected = false,
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                            showResetDialog = true
+                        },
+                        colors = NavigationDrawerItemDefaults.colors(
+                            unselectedContainerColor = Color.Transparent,
+                        ),
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            },
+        ) {
+            Scaffold(
+                snackbarHost = { SnackbarHost(snackbarHostState) },
+                topBar = {
+                    TopAppBar(
+                        navigationIcon = {
+                            if (state.currentScreen != CurrentScreen.SETUP) {
+                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                    Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
+                                }
+                            }
+                        },
+                        title = {
+                            val handNum = state.liveState?.hand?.handNumber ?: (state.completedHands.size + 1)
+                            Text(
+                                text = when (state.currentScreen) {
+                                    CurrentScreen.SETUP -> "Poker Night — Setup"
+                                    CurrentScreen.LIVE_HAND -> "${state.session?.name ?: "Game"} — Hand #$handNum"
+                                    CurrentScreen.POT_BREAKDOWN -> "Pot Breakdown"
+                                    CurrentScreen.SHOWDOWN -> "Showdown & Winners"
+                                    CurrentScreen.INTERMISSION -> "Between Hands — Hand #$handNum Prep"
+                                    CurrentScreen.HISTORY -> "Hand History"
+                                    CurrentScreen.LOANS -> "Loans & Bank Ledger"
+                                },
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                            )
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color(0xFF1B3B22),
+                            titleContentColor = Color.White,
+                        ),
+                    )
+                },
+            ) { padding ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .background(Color(0xFF0F1A12)),
+                ) {
+                    when (state.currentScreen) {
+                        CurrentScreen.SETUP -> SessionSetupScreen(viewModel)
+                        CurrentScreen.LIVE_HAND -> LiveHandScreen(viewModel)
+                        CurrentScreen.POT_BREAKDOWN -> PotBreakdownScreen(viewModel)
+                        CurrentScreen.SHOWDOWN -> ShowdownScreen(viewModel)
+                        CurrentScreen.INTERMISSION -> IntermissionScreen(viewModel)
+                        CurrentScreen.HISTORY -> HistoryScreen(viewModel)
+                        CurrentScreen.LOANS -> LoanScreen(viewModel)
+                    }
                 }
             }
         }
@@ -327,7 +491,7 @@ fun LiveHandScreen(viewModel: PokerViewModel) {
                                 )
                                 if (isDealer) {
                                     Text(
-                                        text = " (BTN)",
+                                        text = " (Dealer)",
                                         color = Color(0xFFFFB300),
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp,
@@ -725,6 +889,12 @@ fun RoundCompleteControls(viewModel: PokerViewModel) {
                 }
             }
         }
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            OutlinedButton(onClick = { viewModel.undoAction() }) {
+                Text("Undo Action", color = Color(0xFFFFD54F), fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 
@@ -781,11 +951,17 @@ fun PotBreakdownScreen(viewModel: PokerViewModel) {
         Spacer(modifier = Modifier.weight(1f))
 
         Button(
-            onClick = { viewModel.navigateTo(CurrentScreen.LIVE_HAND) },
+            onClick = {
+                if (state.liveState != null) {
+                    viewModel.navigateTo(CurrentScreen.LIVE_HAND)
+                } else {
+                    viewModel.navigateTo(CurrentScreen.INTERMISSION)
+                }
+            },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
             modifier = Modifier.fillMaxWidth().height(50.dp),
         ) {
-            Text("Back to Table", fontWeight = FontWeight.Bold, color = Color.White)
+            Text("Back", fontWeight = FontWeight.Bold, color = Color.White)
         }
     }
 }
@@ -794,7 +970,6 @@ fun PotBreakdownScreen(viewModel: PokerViewModel) {
 fun ShowdownScreen(viewModel: PokerViewModel) {
     val state by viewModel.uiState.collectAsState()
     val potResult = state.potCalculation ?: return
-    // Immutable Set state map ensures immediate reactive recomposition on tap
     val selectedWinners = remember { mutableStateMapOf<PotId, Set<PlayerId>>() }
 
     potResult.pots.forEach { pot ->
@@ -955,10 +1130,140 @@ fun ShowdownScreen(viewModel: PokerViewModel) {
             ),
         ) {
             Text(
-                text = if (allPotsHaveWinners) "Confirm Payouts & Finish Hand" else "Select at least 1 winner for each pot",
+                text = if (allPotsHaveWinners) "Confirm Payouts & Go to Intermission" else "Select at least 1 winner for each pot",
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
                 color = if (allPotsHaveWinners) Color.White else Color.Gray,
+            )
+        }
+    }
+}
+
+@Composable
+fun IntermissionScreen(viewModel: PokerViewModel) {
+    val state by viewModel.uiState.collectAsState()
+    val session = state.session ?: return
+    val nextHandNum = state.completedHands.size + 1
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text("Intermission", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+                Text("Preparing Hand #$nextHandNum", color = Color.LightGray, fontSize = 13.sp)
+            }
+
+            Button(
+                onClick = { viewModel.navigateTo(CurrentScreen.LOANS) },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+            ) {
+                Text("Handout Loans", fontWeight = FontWeight.Bold, color = Color.White)
+            }
+        }
+
+        state.lastResolutionResult?.let { res ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A2F20)),
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Text("Last Hand Payouts:", fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F), fontSize = 13.sp)
+                    res.payouts.forEach { pay ->
+                        val name = pay.playerId.value.substringAfterLast("-")
+                        Text(
+                            text = "• $name received ${viewModel.formatChipValue(pay.amount)} (${pay.payoutType})",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+            }
+        }
+
+        Text("Player Lineup & Stacks:", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
+
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(session.players) { sp ->
+                val isDealer = sp.playerId == session.dealerPlayerId
+                val isSittingOut = sp.status == SessionPlayerStatus.SITTING_OUT
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isSittingOut) Color(0xFF242424) else Color(0xFF1E3A24),
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = sp.playerId.value.substringAfterLast("-"),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
+                                    color = if (isSittingOut) Color.Gray else Color.White,
+                                )
+                                if (isDealer) {
+                                    Text(
+                                        text = " (Next Dealer)",
+                                        color = Color(0xFFFFB300),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "Stack: ${viewModel.formatChipValue(sp.currentStack)}",
+                                fontSize = 13.sp,
+                                color = if (isSittingOut) Color.Gray else Color.LightGray,
+                            )
+                        }
+
+                        Button(
+                            onClick = { viewModel.toggleSittingOut(sp.playerId) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isSittingOut) Color(0xFF616161) else Color(0xFF2E7D32),
+                            ),
+                        ) {
+                            Text(
+                                text = if (isSittingOut) "Sitting Out" else "Active",
+                                fontSize = 12.sp,
+                                color = Color.White,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Button(
+            onClick = {
+                viewModel.startNewHand(session, session.dealerPlayerId)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+        ) {
+            Text(
+                text = "Deal Hand #$nextHandNum",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = Color.White,
             )
         }
     }
@@ -974,41 +1279,264 @@ fun HistoryScreen(viewModel: PokerViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Hand Completed!", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+        Text("Completed Hands Log", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
 
-        state.lastResolutionResult?.let { res ->
-            Text("Payouts Summary:", fontWeight = FontWeight.Bold, color = Color.White)
-            res.payouts.forEach { pay ->
-                val name = pay.playerId.value.substringAfterLast("-")
-                Text(
-                    text = "$name won ${viewModel.formatChipValue(pay.amount)} (${pay.payoutType})",
-                    color = Color.LightGray,
-                )
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (state.completedHands.isEmpty()) {
+                item {
+                    Text("No hands completed yet in this session.", color = Color.Gray, fontSize = 14.sp)
+                }
+            }
+            items(state.completedHands) { hand ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("Hand #${hand.handNumber}", fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+                        Text(
+                            text = "Dealer: ${hand.dealerPlayerId.value.substringAfterLast("-")} | Pot: ${hand.totalPotChips} chips",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                        )
+                        if (hand.communityCards.isNotEmpty()) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
+                                hand.communityCards.forEach { card ->
+                                    CardView(card)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        Text("Updated Stacks:", fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(top = 8.dp))
-        state.session?.players?.forEach { sp ->
-            val pName = sp.playerId.value.substringAfterLast("-")
-            Text(
-                text = "$pName: ${viewModel.formatChipValue(sp.currentStack)}",
-                color = Color.White,
-            )
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
-
         Button(
             onClick = {
-                val session = state.session!!
-                viewModel.startNewHand(session, session.dealerPlayerId)
+                if (state.liveState != null) {
+                    viewModel.navigateTo(CurrentScreen.LIVE_HAND)
+                } else {
+                    viewModel.navigateTo(CurrentScreen.INTERMISSION)
+                }
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
+            modifier = Modifier.fillMaxWidth().height(50.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
         ) {
-            Text("Start Next Hand (Rotated Dealer)", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color.White)
+            Text("Back", fontWeight = FontWeight.Bold, color = Color.White)
+        }
+    }
+}
+
+@Composable
+fun LoanScreen(viewModel: PokerViewModel) {
+    val state by viewModel.uiState.collectAsState()
+    val session = state.session ?: return
+
+    var selectedBorrower by remember { mutableStateOf(session.players.first().playerId) }
+    var lenderType by remember { mutableStateOf(LenderType.BANK) }
+    var selectedLenderPlayer by remember {
+        mutableStateOf(session.players.firstOrNull { it.playerId != selectedBorrower }?.playerId)
+    }
+    var loanAmountText by remember { mutableStateOf("500") }
+    var interestRate by remember { mutableFloatStateOf(0f) }
+
+    val tfColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color.White,
+        unfocusedTextColor = Color.White,
+        focusedBorderColor = Color(0xFFFFD54F),
+        unfocusedBorderColor = Color(0xFF81C784),
+        focusedLabelColor = Color(0xFFFFD54F),
+        unfocusedLabelColor = Color.LightGray,
+        focusedContainerColor = Color(0xFF142417),
+        unfocusedContainerColor = Color(0xFF142417),
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Loan Management", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+
+            OutlinedButton(
+                onClick = {
+                    if (state.liveState != null) {
+                        viewModel.navigateTo(CurrentScreen.LIVE_HAND)
+                    } else {
+                        viewModel.navigateTo(CurrentScreen.INTERMISSION)
+                    }
+                },
+            ) {
+                Text("Back", color = Color(0xFFFFD54F))
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Issue New Loan", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
+
+                Text("Borrower:", fontSize = 13.sp, color = Color.LightGray)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    session.players.forEach { p ->
+                        val isBorrower = p.playerId == selectedBorrower
+                        Button(
+                            onClick = {
+                                selectedBorrower = p.playerId
+                                if (selectedLenderPlayer == p.playerId) {
+                                    selectedLenderPlayer = session.players.firstOrNull { it.playerId != p.playerId }?.playerId
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isBorrower) Color(0xFF2E7D32) else Color(0xFF1A261D),
+                            ),
+                        ) {
+                            Text(p.playerId.value.substringAfterLast("-"), color = Color.White)
+                        }
+                    }
+                }
+
+                Text("Lender:", fontSize = 13.sp, color = Color.LightGray)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(
+                        selected = lenderType == LenderType.BANK,
+                        onClick = { lenderType = LenderType.BANK },
+                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFFFD54F)),
+                    )
+                    Text("House Bank", color = Color.White, modifier = Modifier.clickable { lenderType = LenderType.BANK })
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    RadioButton(
+                        selected = lenderType == LenderType.PLAYER,
+                        onClick = { lenderType = LenderType.PLAYER },
+                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFFFD54F)),
+                    )
+                    Text("Other Player", color = Color.White, modifier = Modifier.clickable { lenderType = LenderType.PLAYER })
+                }
+
+                if (lenderType == LenderType.PLAYER) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        session.players.filter { it.playerId != selectedBorrower }.forEach { p ->
+                            val isLender = p.playerId == selectedLenderPlayer
+                            Button(
+                                onClick = { selectedLenderPlayer = p.playerId },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isLender) Color(0xFFE65100) else Color(0xFF1A261D),
+                                ),
+                            ) {
+                                Text("${p.playerId.value.substringAfterLast("-")} (${p.currentStack})", color = Color.White)
+                            }
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = loanAmountText,
+                    onValueChange = { loanAmountText = it.filter { ch -> ch.isDigit() } },
+                    label = { Text("Loan Amount (chips)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = tfColors,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                val principal = loanAmountText.toLongOrNull() ?: 0L
+                val interestInt = interestRate.toInt()
+                val totalRepay = com.pokernight.shared.model.LoanRecord.calculateTotalRepay(principal, interestInt)
+
+                Column {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Interest Rate: $interestInt%", color = Color.White, fontSize = 13.sp)
+                        Text("Repayment: $totalRepay chips", color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                    Slider(
+                        value = interestRate,
+                        onValueChange = { interestRate = it },
+                        valueRange = 0f..10f,
+                        steps = 9,
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        viewModel.issueLoan(
+                            borrowerId = selectedBorrower,
+                            lenderType = lenderType,
+                            lenderPlayerId = if (lenderType == LenderType.PLAYER) selectedLenderPlayer else null,
+                            principal = principal,
+                            interestPercent = interestInt,
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                ) {
+                    Text("Grant Loan", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+        }
+
+        Text("Active Loans:", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (state.loans.isEmpty()) {
+                item {
+                    Text("No loans issued yet", color = Color.Gray, fontSize = 13.sp)
+                }
+            }
+            items(state.loans) { loan ->
+                val borrowerName = loan.borrowerId.value.substringAfterLast("-")
+                val lenderName = if (loan.lenderType == LenderType.BANK) "Bank" else loan.lenderPlayerId?.value?.substringAfterLast("-") ?: "Player"
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (loan.isRepaid) Color(0xFF1B241C) else Color(0xFF263829),
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Text(
+                                text = "$borrowerName borrowed ${loan.principalAmount} from $lenderName",
+                                fontWeight = FontWeight.Bold,
+                                color = if (loan.isRepaid) Color.Gray else Color.White,
+                            )
+                            Text(
+                                text = "Interest: ${loan.interestPercent}% | Owed: ${loan.totalRepayAmount} chips",
+                                fontSize = 12.sp,
+                                color = if (loan.isRepaid) Color.Gray else Color(0xFFFFD54F),
+                            )
+                        }
+
+                        if (!loan.isRepaid) {
+                            Button(
+                                onClick = { viewModel.repayLoan(loan.id) },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
+                            ) {
+                                Text("Repay", fontSize = 12.sp)
+                            }
+                        } else {
+                            Text("REPAID", color = Color(0xFF81C784), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        }
+                    }
+                }
+            }
         }
     }
 }

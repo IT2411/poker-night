@@ -110,6 +110,11 @@ class SessionPersistenceService(
         return reconstructed
     }
 
+    fun cancelAndPurgeHand(handId: HandId) {
+        actionRepo.removeActionsForHand(handId)
+        handRepo.removeHand(handId)
+    }
+
     fun recoverActiveSession(): Pair<Session, BettingState?>? {
         val activeSession = sessionRepo.getActiveSession() ?: return null
         val activeHand = handRepo.getActiveHandForSession(activeSession.id) ?: return activeSession to null

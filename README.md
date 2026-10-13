@@ -2,17 +2,47 @@
 
 **Poker Night** is a local-first, cross-platform Texas Hold'em session manager and action recorder built with **Kotlin Multiplatform (KMP)** and **Compose Multiplatform (Material 3)**.
 
-Designed for private home poker games without a dedicated dealer, Poker Night acts as the authoritative recorder: it manages clockwise seating, automatically rotates the dealer button, posts blinds, validates legal betting actions, splits main and side pots, handles uncalled excess refunds, and maintains an auditable, append-only history with full undo and crash recovery.
+Designed for private home poker games without a dedicated dealer, Poker Night acts as the authoritative recorder: it manages clockwise seating, automatically rotates the dealer button, posts blinds, validates legal betting actions, splits main and side pots, handles uncalled excess refunds, manages chip loans, and maintains an auditable, append-only history with full undo and crash recovery.
+
+**Current Release:** `v0.1.1` *(Baseline: `v0.1.0`)*
 
 ---
 
-## 🌟 Key Features
+## 🚀 What's New in v0.1.1
+
+- 🍔 **Top-Left Burger Navigation Drawer (☰)**:
+  - Clean access to Live Table, Pot Breakdown, Hand History, Loans & Bank, and Session Reset.
+  - Removed clutter from the top app bar for a focused game view.
+- ⏱️ **Between-Hands Intermission Screen**:
+  - Payout confirmation now opens a dedicated Intermission Screen rather than instantly dealing cards.
+  - Shows last hand payouts, updated chip standings, and the next Dealer button position.
+  - Allows the host to settle loans and adjust player attendance before dealing.
+- 🏦 **Loan Management System (Bank & Player-to-Player)**:
+  - Players can borrow chips from the **House Bank** or from **Another Player**.
+  - Configurable interest rate from **0% to 10%** (default: `0%`).
+  - Strict chip validation: Player loans verify the lending player has sufficient chips before transferring.
+  - One-tap loan repayment when a player regains chips.
+- 🪑 **Sit Out / Rejoin Toggles**:
+  - Any player can be set to **Sitting Out** or **Active** between hands.
+  - Sitting-out players are automatically bypassed during blind postings and card deals.
+- 🔄 **Safe Undo Back to Intermission**:
+  - Stepping back past the start of a hand safely cancels the active deal and returns to the Intermission screen without duplicate action ID conflicts.
+  - Undo cannot mutate or corrupt previously completed hands behind Intermission.
+- 🏷️ **Clear `(DEALER)` & `(NEXT DEALER)` Badges**:
+  - Replaced poker shorthand `(BTN)` with crystal-clear dealer badges.
+- 🪙 **5-Chip Minimum Increment**:
+  - Minimum bet and raise increments set to 5 chips with synchronized numeric keypad and slider inputs.
+- 🏆 **Reactive Winner Highlighting**:
+  - Selected winners on the Showdown screen light up with emerald green cards, 3dp gold borders, and `🏆 WINNER` badges prior to confirmation.
+
+---
+
+## 🌟 Core Engine Features (v0.1.0 Baseline)
 
 - **Authoritative Rules Engine**:
   - Exact integer-only arithmetic (`Long` chips) — strictly zero floating-point rounding errors.
   - Configurable chip denominations (default: `1 chip = ₹0.01`).
   - Standard betting actions: **Check**, **Fold**, **Call**, **Bet**, **Raise**, and **All-In**.
-  - Minimum raise increment enforced in **5-chip increments**.
   - Caps player bets and raises to the maximum possible amount opponents can match.
 - **Seating & Positions**:
   - Fixed clockwise seating with dynamic skipping of sitting-out or busted players.
@@ -25,17 +55,13 @@ Designed for private home poker games without a dedicated dealer, Poker Night ac
   - **Uncalled Excess Refunds**: Automatically refunds uncalled bets/raises to the bettor before showdown.
   - Split pots with standard odd-chip resolution (awarded clockwise from the dealer button).
 - **Hand Resolution & Showdown**:
-  - **Manual Winner Selection**: Operator taps to select pot winners with high-contrast glowing feedback.
+  - **Manual Winner Selection**: Operator taps to select pot winners with high-contrast feedback.
   - **7-Card Texas Hold'em Evaluator**: Ranks hands across all 10 poker categories (Royal Flush down to High Card).
   - **Table Chip Conservation**: Guarantees $\sum \text{Starting Stacks} = \sum \text{Current Stacks}$ across all hands.
-- **Persistence, Undo & Crash Recovery**:
+- **Persistence & Crash Recovery**:
   - Append-only event sourcing with non-destructive reversal tombstones.
   - Replays effective action history to rebuild exact stacks, pots, and turn order.
   - Recovers uncompleted live hands and sessions upon app restart.
-- **Modern Material 3 Interface**:
-  - High-contrast poker table dark theme with legible text and cards.
-  - Dual currency display: **Chips** and **₹ INR** (e.g. `500 chips (₹5.00)`).
-  - Direct **numeric keypad input** + synchronized slider and quick preset buttons (`Min`, `1/2 Pot`, `Pot`, `All-In`).
 
 ---
 
@@ -45,7 +71,7 @@ Designed for private home poker games without a dedicated dealer, Poker Night ac
 poker-night/
 ├── shared/                       # Shared Kotlin Multiplatform domain & data
 │   ├── src/commonMain/kotlin/
-│   │   ├── com/pokernight/shared/model/       # Immutable domain entities (Card, Hand, Pot, Session, etc.)
+│   │   ├── com/pokernight/shared/model/       # Immutable domain entities (Card, Hand, Pot, Session, Loan, etc.)
 │   │   ├── com/pokernight/shared/domain/
 │   │   │   ├── betting/                       # Live betting state machine & legal action validator
 │   │   │   ├── evaluation/                    # 7-card poker hand evaluator
@@ -71,6 +97,7 @@ poker-night/
 
 | Component | Pinned Version |
 |---|---|
+| **App Version** | `0.1.1` (Build 2) |
 | **Kotlin** | 2.1.10 |
 | **Android Gradle Plugin (AGP)** | 8.8.2 |
 | **Gradle Wrapper** | 8.12.1 |
@@ -79,21 +106,6 @@ poker-night/
 | **Serialization** | `kotlinx-serialization-json` 1.8.0 |
 | **Coroutines** | `kotlinx-coroutines-core` 1.10.1 |
 | **Formatting / Linter** | Spotless 7.0.2 with `ktlint` 1.5.0 |
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- **JDK 17** (`sudo apt install openjdk-17-jdk` on Ubuntu/Debian)
-- **Android SDK Platform 35** and Build-Tools `35.0.0`
-- Android Studio Ladybug / Koala or IntelliJ IDEA
-
-### Environment Setup (Linux/macOS)
-Load the included environment helper:
-```bash
-source ./env.sh
-```
 
 ---
 
@@ -142,22 +154,6 @@ adb shell am start -n com.pokernight.android/.MainActivity
    cd androidApp/build/outputs/apk/debug && python3 -m http.server 8000
    ```
 2. On your phone's browser, go to `http://<YOUR_PC_IP>:8000/androidApp-debug.apk` and tap install.
-
----
-
-## 📋 Verified Test Scenarios
-
-The test suite in `shared/src/commonTest/` verifies:
-- [x] **Scenario 01**: Session creation, custom blinds, initial dealer selection, and clockwise seating.
-- [x] **Scenario 02**: Complete hand progression from Pre-Flop through Flop, Turn, River, and Showdown.
-- [x] **Scenario 03**: Automatic dealer button rotation and blind posting across consecutive hands.
-- [x] **Scenario 04**: Legality of folds, raises, all-ins, and short all-in calls.
-- [x] **Scenario 05**: Multi-level all-ins generating Main, Side 1, and Side 2 pots (SRS Scenario A).
-- [x] **Scenario 06**: Contributions from folded players retained in pot layers while excluding them from winning.
-- [x] **Scenario 07**: Split pot division, odd-chip distribution clockwise from dealer, and uncalled excess returns.
-- [x] **Scenario 08**: App crash/kill recovery during an active hand restoring exact stacks and live bets.
-- [x] **Scenario 09**: Non-destructive action undoing with audit tombstone tracking.
-- [x] **Scenario 10**: Total table chip conservation across multiple completed hands.
 
 ---
 
