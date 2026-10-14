@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -73,11 +74,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pokernight.shared.domain.betting.LegalActions
+import com.pokernight.shared.domain.evaluation.HandEvaluator
+import com.pokernight.shared.domain.evaluation.HandRank
 import com.pokernight.shared.model.ActionType
 import com.pokernight.shared.model.Card
 import com.pokernight.shared.model.LenderType
 import com.pokernight.shared.model.PlayerId
 import com.pokernight.shared.model.PotId
+import com.pokernight.shared.model.Rank
 import com.pokernight.shared.model.SessionPlayerStatus
 import com.pokernight.shared.model.Street
 import com.pokernight.shared.model.Suit
@@ -491,10 +495,10 @@ fun LiveHandScreen(viewModel: PokerViewModel) {
                                 )
                                 if (isDealer) {
                                     Text(
-                                        text = " (Dealer)",
+                                        text = " (DEALER)",
                                         color = Color(0xFFFFB300),
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
+                                        fontSize = 11.sp,
                                     )
                                 }
                             }
@@ -971,6 +975,7 @@ fun ShowdownScreen(viewModel: PokerViewModel) {
     val state by viewModel.uiState.collectAsState()
     val potResult = state.potCalculation ?: return
     val selectedWinners = remember { mutableStateMapOf<PotId, Set<PlayerId>>() }
+    var showCardPicker by remember { mutableStateOf(false) }
 
     potResult.pots.forEach { pot ->
         if (!selectedWinners.containsKey(pot.id)) {
@@ -980,13 +985,41 @@ fun ShowdownScreen(viewModel: PokerViewModel) {
 
     val allPotsHaveWinners = potResult.pots.all { (selectedWinners[it.id] ?: emptySet()).isNotEmpty() }
 
+    if (showCardPicker) {
+        CardEvaluationDialog(
+            viewModel = viewModel,
+            onDismiss = { showCardPicker = false },
+            onWinnersEvaluated = { evaluatedWinners ->
+                potResult.pots.forEach { pot ->
+                    selectedWinners[pot.id] = evaluatedWinners
+                }
+                showCardPicker = false
+            },
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Select Winners for Each Pot", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Select Winners", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+
+            Button(
+                onClick = { showCardPicker = true },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
+            ) {
+                Icon(Icons.Default.Style, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Evaluate with Cards", fontSize = 12.sp, color = Color.White)
+            }
+        }
 
         if (potResult.uncalledExcessRefunds.isNotEmpty()) {
             val refundInfo = potResult.uncalledExcessRefunds.entries.joinToString {
@@ -1140,6 +1173,296 @@ fun ShowdownScreen(viewModel: PokerViewModel) {
 }
 
 @Composable
+fun CardEvaluationDialog(
+    viewModel: PokerViewModel,
+    onDismiss: () -> Unit,
+    onWinnersEvaluated: (Set<PlayerId>) -> Unit,
+) {
+    val state by viewModel.uiState.collectAsState()
+    val hand = state.liveState?.hand ?: return
+    val activePlayers = hand.players.filter { !it.folded }
+
+    val boardCards = remember {
+        mutableStateMapOf<Int, Card?>().apply { (0..4).forEach { put(it, hand.communityCards.getOrNull(it)) } }
+    }
+    val holeCards = remember {
+        mutableStateMapOf<PlayerId, Pair<Card?, Card?>>().apply {
+            activePlayers.forEach { put(it.playerId, Pair(null, null)) }
+        }
+    }
+
+    var selectedSlot by remember { mutableStateOf("board_0") }
+    var selectedSuit by remember { mutableStateOf(Suit.SPADES) }
+    var evaluationSummary by remember { mutableStateOf<Map<PlayerId, HandRank>?>(null) }
+
+    val allPickedCards = mutableSetOf<Card>()
+    boardCards.values.filterNotNull().forEach { allPickedCards.add(it) }
+    holeCards.values.forEach { (c1, c2) ->
+        c1?.let { allPickedCards.add(it) }
+        c2?.let { allPickedCards.add(it) }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Input Cards for Evaluation", fontWeight = FontWeight.Bold, color = Color.White) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Tap slot, then pick suit & rank:", fontSize = 12.sp, color = Color(0xFFFFD54F))
+
+                // Board Cards (5 Slots labelled B1 to B5)
+                Text("Board (5 Cards):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    (0..4).forEach { idx ->
+                        val slotKey = "board_$idx"
+                        val isSlotActive = selectedSlot == slotKey
+                        val card = boardCards[idx]
+                        CardSlotView(slotLabel = "B${idx + 1}", card = card, isActive = isSlotActive) {
+                            selectedSlot = slotKey
+                        }
+                    }
+                }
+
+                // Players' Hole Cards (labelled C1 and C2)
+                Text("Player Hole Cards:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                activePlayers.forEach { p ->
+                    val pName = p.playerId.value.substringAfterLast("-")
+                    val (c1, c2) = holeCards[p.playerId] ?: Pair(null, null)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(pName, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            CardSlotView(slotLabel = "C1", card = c1, isActive = selectedSlot == "${p.playerId.value}_0") {
+                                selectedSlot = "${p.playerId.value}_0"
+                            }
+                            CardSlotView(slotLabel = "C2", card = c2, isActive = selectedSlot == "${p.playerId.value}_1") {
+                                selectedSlot = "${p.playerId.value}_1"
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Color(0xFF2E4532), modifier = Modifier.padding(vertical = 4.dp))
+
+                // 4 Suits: ICONS ONLY (♠, ♥, ♦, ♣)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Suit.entries.forEach { suit ->
+                        val isSelected = selectedSuit == suit
+                        val suitColor = if (suit == Suit.HEARTS || suit == Suit.DIAMONDS) Color(0xFFFF5252) else Color.White
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 3.dp)
+                                .height(46.dp)
+                                .background(
+                                    if (isSelected) Color(0xFF2E7D32) else Color(0xFF1E2E22),
+                                    RoundedCornerShape(8.dp),
+                                )
+                                .border(
+                                    if (isSelected) 2.5.dp else 1.dp,
+                                    if (isSelected) Color(0xFFFFD54F) else Color(0xFF455A64),
+                                    RoundedCornerShape(8.dp),
+                                )
+                                .clickable { selectedSuit = suit },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = suit.symbol.toString(),
+                                color = suitColor,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 24.sp,
+                            )
+                        }
+                    }
+                }
+
+                // 13 Ranks: ZERO-PADDING TILES WITH LARGE CRISP NUMBERS
+                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    val row1 = listOf(Rank.TWO, Rank.THREE, Rank.FOUR, Rank.FIVE, Rank.SIX, Rank.SEVEN, Rank.EIGHT)
+                    val row2 = listOf(Rank.NINE, Rank.TEN, Rank.JACK, Rank.QUEEN, Rank.KING, Rank.ACE)
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        row1.forEach { rank ->
+                            val card = Card(rank, selectedSuit)
+                            val isAlreadyUsed = allPickedCards.contains(card)
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(40.dp)
+                                    .background(
+                                        color = if (isAlreadyUsed) Color(0xFF141A15) else Color(0xFF1E3A24),
+                                        shape = RoundedCornerShape(6.dp),
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isAlreadyUsed) Color(0xFF263228) else Color(0xFF4CAF50),
+                                        shape = RoundedCornerShape(6.dp),
+                                    )
+                                    .clickable(enabled = !isAlreadyUsed) {
+                                        if (selectedSlot.startsWith("board_")) {
+                                            val bIdx = selectedSlot.substringAfter("board_").toInt()
+                                            boardCards[bIdx] = card
+                                            if (bIdx < 4) selectedSlot = "board_${bIdx + 1}"
+                                        } else {
+                                            val pIdStr = selectedSlot.substringBeforeLast("_")
+                                            val cIdx = selectedSlot.substringAfterLast("_").toInt()
+                                            val pId = PlayerId(pIdStr)
+                                            val currentPair = holeCards[pId] ?: Pair(null, null)
+                                            holeCards[pId] = if (cIdx == 0) Pair(card, currentPair.second) else Pair(currentPair.first, card)
+                                            if (cIdx == 0) selectedSlot = "${pIdStr}_1"
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = rank.symbol,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isAlreadyUsed) Color(0xFF37474F) else Color.White,
+                                )
+                            }
+                        }
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        row2.forEach { rank ->
+                            val card = Card(rank, selectedSuit)
+                            val isAlreadyUsed = allPickedCards.contains(card)
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(40.dp)
+                                    .background(
+                                        color = if (isAlreadyUsed) Color(0xFF141A15) else Color(0xFF1E3A24),
+                                        shape = RoundedCornerShape(6.dp),
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (isAlreadyUsed) Color(0xFF263228) else Color(0xFF4CAF50),
+                                        shape = RoundedCornerShape(6.dp),
+                                    )
+                                    .clickable(enabled = !isAlreadyUsed) {
+                                        if (selectedSlot.startsWith("board_")) {
+                                            val bIdx = selectedSlot.substringAfter("board_").toInt()
+                                            boardCards[bIdx] = card
+                                            if (bIdx < 4) selectedSlot = "board_${bIdx + 1}"
+                                        } else {
+                                            val pIdStr = selectedSlot.substringBeforeLast("_")
+                                            val cIdx = selectedSlot.substringAfterLast("_").toInt()
+                                            val pId = PlayerId(pIdStr)
+                                            val currentPair = holeCards[pId] ?: Pair(null, null)
+                                            holeCards[pId] = if (cIdx == 0) Pair(card, currentPair.second) else Pair(currentPair.first, card)
+                                            if (cIdx == 0) selectedSlot = "${pIdStr}_1"
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = if (rank == Rank.TEN) "10" else rank.symbol,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isAlreadyUsed) Color(0xFF37474F) else Color.White,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                evaluationSummary?.let { summary ->
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF142C1B)),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    ) {
+                        Column(modifier = Modifier.padding(6.dp)) {
+                            Text("Evaluation Result:", fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F), fontSize = 12.sp)
+                            summary.forEach { (pId, rank) ->
+                                Text(
+                                    text = "${pId.value.substringAfterLast("-")}: ${rank.description}",
+                                    fontSize = 11.sp,
+                                    color = Color.White,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val finalBoard = boardCards.values.filterNotNull()
+                    require(finalBoard.size == 5) { "Please input all 5 board cards" }
+                    activePlayers.forEach { p ->
+                        val pair = holeCards[p.playerId]
+                        require(pair?.first != null && pair.second != null) {
+                            "Please input 2 cards for ${p.playerId.value.substringAfterLast("-")}"
+                        }
+                    }
+
+                    val ranks = mutableMapOf<PlayerId, HandRank>()
+                    activePlayers.forEach { p ->
+                        val (c1, c2) = holeCards[p.playerId]!!
+                        val seven = listOf(c1!!, c2!!) + finalBoard
+                        ranks[p.playerId] = HandEvaluator.evaluate7Cards(seven)
+                    }
+                    evaluationSummary = ranks
+
+                    var best: HandRank? = null
+                    val winners = mutableSetOf<PlayerId>()
+                    ranks.forEach { (pId, rank) ->
+                        if (best == null || rank > best!!) {
+                            best = rank
+                            winners.clear()
+                            winners.add(pId)
+                        } else if (rank.compareTo(best!!) == 0) {
+                            winners.add(pId)
+                        }
+                    }
+
+                    onWinnersEvaluated(winners)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+            ) {
+                Text("Evaluate & Auto-Select Winners", fontWeight = FontWeight.Bold, color = Color.White)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = Color.White)
+            }
+        },
+        containerColor = Color(0xFF16251A),
+    )
+}
+
+@Composable
+fun CardSlotView(slotLabel: String, card: Card?, isActive: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(width = 46.dp, height = 40.dp)
+            .background(if (card != null) Color.White else Color(0xFF142417), RoundedCornerShape(4.dp))
+            .border(if (isActive) 2.5.dp else 1.dp, if (isActive) Color(0xFFFFD54F) else Color.Gray, RoundedCornerShape(4.dp))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (card != null) {
+            val suitColor = if (card.suit == Suit.HEARTS || card.suit == Suit.DIAMONDS) Color.Red else Color.Black
+            val rankText = if (card.rank == Rank.TEN) "10" else card.rank.symbol
+            Text("$rankText${card.suit.symbol}", color = suitColor, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        } else {
+            Text(slotLabel, color = Color.Gray, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
 fun IntermissionScreen(viewModel: PokerViewModel) {
     val state by viewModel.uiState.collectAsState()
     val session = state.session ?: return
@@ -1219,7 +1542,7 @@ fun IntermissionScreen(viewModel: PokerViewModel) {
                                 )
                                 if (isDealer) {
                                     Text(
-                                        text = " (Next Dealer)",
+                                        text = " (NEXT DEALER)",
                                         color = Color(0xFFFFB300),
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp,
@@ -1544,13 +1867,14 @@ fun LoanScreen(viewModel: PokerViewModel) {
 @Composable
 fun CardView(card: Card) {
     val suitColor = if (card.suit == Suit.HEARTS || card.suit == Suit.DIAMONDS) Color.Red else Color.Black
+    val rankText = if (card.rank == Rank.TEN) "10" else card.rank.symbol
     Box(
         modifier = Modifier
             .background(Color.White, RoundedCornerShape(4.dp))
             .padding(horizontal = 6.dp, vertical = 4.dp),
     ) {
         Text(
-            text = "${card.rank.symbol}${card.suit.symbol}",
+            text = "$rankText${card.suit.symbol}",
             color = suitColor,
             fontWeight = FontWeight.Bold,
             fontSize = 14.sp,
