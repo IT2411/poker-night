@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -50,6 +51,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -304,6 +307,63 @@ fun PokerApp(viewModel: PokerViewModel) {
 }
 
 @Composable
+fun HostingStatusHeader(viewModel: PokerViewModel) {
+    val state by viewModel.uiState.collectAsState()
+    val status = state.hostingStatus
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (status.isHosting) Color(0xFF1E3A24) else Color(0xFF212B23),
+        ),
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Wifi,
+                    contentDescription = null,
+                    tint = if (status.isHosting) Color(0xFF81C784) else Color.Gray,
+                    modifier = Modifier.size(20.dp),
+                )
+                Column {
+                    Text(
+                        text = if (status.isHosting) "Host Active: ${status.roomId}" else "Multiplayer Server",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = if (status.isHosting) Color(0xFFFFD54F) else Color.LightGray,
+                    )
+                    if (status.isHosting) {
+                        Text(
+                            text = "${status.hostUrl} | ${status.connectedClients} connected",
+                            fontSize = 11.sp,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
+
+            Switch(
+                checked = status.isHosting,
+                onCheckedChange = { viewModel.toggleHosting(it) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color(0xFFFFD54F),
+                    checkedTrackColor = Color(0xFF2E7D32),
+                ),
+            )
+        }
+    }
+}
+
+@Composable
 fun SessionSetupScreen(viewModel: PokerViewModel) {
     var sessionName by remember { mutableStateOf("Friday Poker Night") }
     var smallBlindText by remember { mutableStateOf("10") }
@@ -326,9 +386,11 @@ fun SessionSetupScreen(viewModel: PokerViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Session Configuration", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+
+        HostingStatusHeader(viewModel)
 
         OutlinedTextField(
             value = sessionName,
@@ -416,6 +478,8 @@ fun LiveHandScreen(viewModel: PokerViewModel) {
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        HostingStatusHeader(viewModel)
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
@@ -1209,7 +1273,6 @@ fun CardEvaluationDialog(
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Tap slot, then pick suit & rank:", fontSize = 12.sp, color = Color(0xFFFFD54F))
 
-                // Board Cards (5 Slots labelled B1 to B5)
                 Text("Board (5 Cards):", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     (0..4).forEach { idx ->
@@ -1222,7 +1285,6 @@ fun CardEvaluationDialog(
                     }
                 }
 
-                // Players' Hole Cards (labelled C1 and C2)
                 Text("Player Hole Cards:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
                 activePlayers.forEach { p ->
                     val pName = p.playerId.value.substringAfterLast("-")
@@ -1246,7 +1308,6 @@ fun CardEvaluationDialog(
 
                 HorizontalDivider(color = Color(0xFF2E4532), modifier = Modifier.padding(vertical = 4.dp))
 
-                // 4 Suits: ICONS ONLY (♠, ♥, ♦, ♣)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1281,7 +1342,6 @@ fun CardEvaluationDialog(
                     }
                 }
 
-                // 13 Ranks: ZERO-PADDING TILES WITH LARGE CRISP NUMBERS
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     val row1 = listOf(Rank.TWO, Rank.THREE, Rank.FOUR, Rank.FIVE, Rank.SIX, Rank.SEVEN, Rank.EIGHT)
                     val row2 = listOf(Rank.NINE, Rank.TEN, Rank.JACK, Rank.QUEEN, Rank.KING, Rank.ACE)
@@ -1472,8 +1532,10 @@ fun IntermissionScreen(viewModel: PokerViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        HostingStatusHeader(viewModel)
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,

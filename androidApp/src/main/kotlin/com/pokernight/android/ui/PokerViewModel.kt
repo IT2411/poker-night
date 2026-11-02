@@ -1,6 +1,8 @@
 package com.pokernight.android.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.pokernight.android.network.PokerHostService
 import com.pokernight.shared.data.InMemoryActionRepository
 import com.pokernight.shared.data.InMemoryHandRepository
 import com.pokernight.shared.data.InMemorySessionRepository
@@ -32,6 +34,7 @@ import com.pokernight.shared.model.Street
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
 enum class CurrentScreen {
     SETUP,
@@ -43,6 +46,14 @@ enum class CurrentScreen {
     LOANS,
 }
 
+data class HostingStatus(
+    val isHosting: Boolean = false,
+    val roomId: String = "",
+    val hostUrl: String = "",
+    val pairingSecret: String = "",
+    val connectedClients: Int = 0,
+)
+
 data class PokerUiState(
     val currentScreen: CurrentScreen = CurrentScreen.SETUP,
     val session: Session? = null,
@@ -52,6 +63,7 @@ data class PokerUiState(
     val lastResolutionResult: HandResolutionResult? = null,
     val completedHands: List<Hand> = emptyList(),
     val loans: List<LoanRecord> = emptyList(),
+    val hostingStatus: HostingStatus = HostingStatus(),
     val errorMessage: String? = null,
 )
 
@@ -61,6 +73,8 @@ class PokerViewModel : ViewModel() {
     private val handRepo = InMemoryHandRepository()
     private val actionRepo = InMemoryActionRepository()
     private val service = SessionPersistenceService(sessionRepo, handRepo, actionRepo)
+
+    private var hostService: PokerHostService? = null
 
     private val _uiState = MutableStateFlow(PokerUiState())
     val uiState: StateFlow<PokerUiState> = _uiState.asStateFlow()
@@ -84,6 +98,58 @@ class PokerViewModel : ViewModel() {
                 potCalculation = pots,
             )
         }
+    }
+
+    fun bindHostService(service: PokerHostService) {
+        this.hostService = service
+        viewModelScope.launch {
+            launch {
+                service.isHosting.collect { hosting ->
+                    updateHostingStatus { it.copy(isHosting = hosting) }
+                }
+            }
+            launch {
+                service.connectedCount.collect { count ->
+                    updateHostingStatus { it.copy(connectedClients = count) }
+                }
+            }
+            launch {
+                service.hostUrl.collect { url ->
+                    updateHostingStatus { it.copy(hostUrl = url) }
+                }
+            }
+            launch {
+                service.roomId.collect { rId ->
+                    updateHostingStatus { it.copy(roomId = rId) }
+                }
+            }
+            launch {
+                service.pairingSecret.collect { secret ->
+                    updateHostingStatus { it.copy(pairingSecret = secret) }
+                }
+            }
+        }
+    }
+
+    fun toggleHosting(enable: Boolean) {
+        val s = hostService ?: return
+        if (enable) {
+            s.startHosting()
+            _uiState.value.session?.let { session ->
+                s.updateGameState(session, _uiState.value.liveState)
+            }
+        } else {
+            s.stopHosting()
+        }
+    }
+
+    private fun updateHostingStatus(transform: (HostingStatus) -> HostingStatus) {
+        _uiState.value = _uiState.value.copy(hostingStatus = transform(_uiState.value.hostingStatus))
+    }
+
+    private fun notifyHostServerStateChanged() {
+        val session = _uiState.value.session ?: return
+        hostService?.updateGameState(session, _uiState.value.liveState)
     }
 
     fun createSession(
@@ -125,7 +191,6 @@ class PokerViewModel : ViewModel() {
             val eligible = SeatingNavigator.getEligibleActivePlayers(session.players)
             require(eligible.size >= 2) { "At least 2 active players with chips required to deal a hand" }
 
-            // Ensure dealer is one of the active players
             val activeDealer = SeatingNavigator.getActiveDealerId(session)
             val handNum = _uiState.value.completedHands.size + 1
             val newState = service.startNewHand(session.id, handNum, activeDealer, System.currentTimeMillis())
@@ -144,6 +209,7 @@ class PokerViewModel : ViewModel() {
                 potCalculation = pots,
                 errorMessage = null,
             )
+            notifyHostServerStateChanged()
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(errorMessage = e.message)
         }
@@ -169,6 +235,7 @@ class PokerViewModel : ViewModel() {
                 potCalculation = pots,
                 errorMessage = null,
             )
+            notifyHostServerStateChanged()
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(errorMessage = e.message)
         }
@@ -196,8 +263,6 @@ class PokerViewModel : ViewModel() {
                     errorMessage = null,
                 )
             } else {
-                // At the start of the hand (only blinds posted):
-                // Purge the hand and its actions completely to avoid any duplicate ID conflicts
                 service.cancelAndPurgeHand(state.hand.id)
 
                 _uiState.value = _uiState.value.copy(
@@ -208,6 +273,7 @@ class PokerViewModel : ViewModel() {
                     errorMessage = null,
                 )
             }
+            notifyHostServerStateChanged()
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(errorMessage = e.message)
         }
@@ -237,6 +303,7 @@ class PokerViewModel : ViewModel() {
                 currentScreen = if (updated.hand.currentStreet == Street.SHOWDOWN) CurrentScreen.SHOWDOWN else CurrentScreen.LIVE_HAND,
                 errorMessage = null,
             )
+            notifyHostServerStateChanged()
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(errorMessage = e.message)
         }
@@ -267,6 +334,7 @@ class PokerViewModel : ViewModel() {
                 currentScreen = CurrentScreen.INTERMISSION,
                 errorMessage = null,
             )
+            notifyHostServerStateChanged()
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(errorMessage = e.message)
         }
@@ -289,6 +357,7 @@ class PokerViewModel : ViewModel() {
         val updatedSession = session.copy(players = updatedPlayers)
         sessionRepo.updateSession(updatedSession)
         _uiState.value = _uiState.value.copy(session = updatedSession)
+        notifyHostServerStateChanged()
     }
 
     fun issueLoan(
@@ -343,6 +412,7 @@ class PokerViewModel : ViewModel() {
                 loans = _uiState.value.loans + loan,
                 errorMessage = null,
             )
+            notifyHostServerStateChanged()
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(errorMessage = e.message)
         }
@@ -379,12 +449,14 @@ class PokerViewModel : ViewModel() {
                 loans = updatedLoans,
                 errorMessage = null,
             )
+            notifyHostServerStateChanged()
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(errorMessage = e.message)
         }
     }
 
     fun resetEntireSession() {
+        hostService?.stopHosting()
         _uiState.value = PokerUiState(currentScreen = CurrentScreen.SETUP)
     }
 
