@@ -1,5 +1,6 @@
 package com.pokernight.android.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MonetizationOn
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.Wifi
@@ -76,6 +78,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.pokernight.android.network.QrCodeGenerator
 import com.pokernight.shared.domain.betting.LegalActions
 import com.pokernight.shared.domain.evaluation.HandEvaluator
 import com.pokernight.shared.domain.evaluation.HandRank
@@ -108,6 +111,7 @@ fun PokerApp(viewModel: PokerViewModel) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var showResetDialog by remember { mutableStateOf(false) }
+    var showQrDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let {
@@ -143,6 +147,13 @@ fun PokerApp(viewModel: PokerViewModel) {
                 }
             },
             containerColor = Color(0xFF1E2F23),
+        )
+    }
+
+    if (showQrDialog && state.hostingStatus.isHosting) {
+        HostQrDialog(
+            hostingStatus = state.hostingStatus,
+            onDismiss = { showQrDialog = false },
         )
     }
 
@@ -278,6 +289,13 @@ fun PokerApp(viewModel: PokerViewModel) {
                                 color = Color.White,
                             )
                         },
+                        actions = {
+                            if (state.hostingStatus.isHosting) {
+                                IconButton(onClick = { showQrDialog = true }) {
+                                    Icon(Icons.Default.QrCode, contentDescription = "Show QR", tint = Color(0xFFFFD54F))
+                                }
+                            }
+                        },
                         colors = TopAppBarDefaults.topAppBarColors(
                             containerColor = Color(0xFF1B3B22),
                             titleContentColor = Color.White,
@@ -304,6 +322,71 @@ fun PokerApp(viewModel: PokerViewModel) {
             }
         }
     }
+}
+
+@Composable
+fun HostQrDialog(
+    hostingStatus: HostingStatus,
+    onDismiss: () -> Unit,
+) {
+    val fullJoinUrl = "${hostingStatus.hostUrl}/join?room=${hostingStatus.roomId}&pair=${hostingStatus.pairingSecret}"
+    val qrBitmap = remember(fullJoinUrl) {
+        QrCodeGenerator.generateQrBitmap(fullJoinUrl, sizePx = 512)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text("Scan to Join Room", fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .background(Color.White, RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                ) {
+                    Image(
+                        bitmap = qrBitmap,
+                        contentDescription = "Room QR Code",
+                        modifier = Modifier.size(220.dp),
+                    )
+                }
+
+                Text(
+                    text = "Room: ${hostingStatus.roomId}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Color.White,
+                )
+
+                Text(
+                    text = "Web URL: ${hostingStatus.hostUrl}",
+                    fontSize = 13.sp,
+                    color = Color(0xFFA5D6A7),
+                )
+
+                Text(
+                    text = "Scan with any phone camera (iPhone or Android) on the same Wi-Fi to join!",
+                    fontSize = 11.sp,
+                    color = Color.LightGray,
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+            ) {
+                Text("Close", color = Color.White)
+            }
+        },
+        containerColor = Color(0xFF1A2E20),
+    )
 }
 
 @Composable
