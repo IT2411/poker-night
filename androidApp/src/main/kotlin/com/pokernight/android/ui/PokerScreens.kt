@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -91,6 +93,9 @@ import com.pokernight.shared.model.Rank
 import com.pokernight.shared.model.SessionPlayerStatus
 import com.pokernight.shared.model.Street
 import com.pokernight.shared.model.Suit
+import com.pokernight.shared.multiplayer.client.ClientSessionState
+import com.pokernight.shared.multiplayer.protocol.CardDto
+import com.pokernight.shared.multiplayer.protocol.LegalActionsDto
 import kotlinx.coroutines.launch
 
 private val PokerDarkScheme = darkColorScheme(
@@ -160,7 +165,7 @@ fun PokerApp(viewModel: PokerViewModel) {
     MaterialTheme(colorScheme = PokerDarkScheme) {
         ModalNavigationDrawer(
             drawerState = drawerState,
-            gesturesEnabled = state.currentScreen != CurrentScreen.SETUP,
+            gesturesEnabled = state.currentScreen != CurrentScreen.SETUP && state.currentScreen != CurrentScreen.CLIENT_GAME,
             drawerContent = {
                 ModalDrawerSheet(
                     drawerContainerColor = Color(0xFF16251A),
@@ -267,7 +272,11 @@ fun PokerApp(viewModel: PokerViewModel) {
                 topBar = {
                     TopAppBar(
                         navigationIcon = {
-                            if (state.currentScreen != CurrentScreen.SETUP) {
+                            if (state.currentScreen == CurrentScreen.CLIENT_GAME || state.currentScreen == CurrentScreen.JOIN_ROOM) {
+                                IconButton(onClick = { viewModel.disconnectClient() }) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Exit Room", tint = Color.White)
+                                }
+                            } else if (state.currentScreen != CurrentScreen.SETUP) {
                                 IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                     Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
                                 }
@@ -277,13 +286,15 @@ fun PokerApp(viewModel: PokerViewModel) {
                             val handNum = state.liveState?.hand?.handNumber ?: (state.completedHands.size + 1)
                             Text(
                                 text = when (state.currentScreen) {
-                                    CurrentScreen.SETUP -> "Poker Night — Setup"
+                                    CurrentScreen.SETUP -> "Poker Night"
                                     CurrentScreen.LIVE_HAND -> "${state.session?.name ?: "Game"} — Hand #$handNum"
                                     CurrentScreen.POT_BREAKDOWN -> "Pot Breakdown"
                                     CurrentScreen.SHOWDOWN -> "Showdown & Winners"
                                     CurrentScreen.INTERMISSION -> "Between Hands — Hand #$handNum Prep"
                                     CurrentScreen.HISTORY -> "Hand History"
                                     CurrentScreen.LOANS -> "Loans & Bank Ledger"
+                                    CurrentScreen.JOIN_ROOM -> "Join Multiplayer Room"
+                                    CurrentScreen.CLIENT_GAME -> "Multiplayer Table"
                                 },
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White,
@@ -317,6 +328,8 @@ fun PokerApp(viewModel: PokerViewModel) {
                         CurrentScreen.INTERMISSION -> IntermissionScreen(viewModel)
                         CurrentScreen.HISTORY -> HistoryScreen(viewModel)
                         CurrentScreen.LOANS -> LoanScreen(viewModel)
+                        CurrentScreen.JOIN_ROOM -> ClientSeatSelectionScreen(viewModel)
+                        CurrentScreen.CLIENT_GAME -> ClientPlayerTableScreen(viewModel)
                     }
                 }
             }
@@ -448,6 +461,9 @@ fun HostingStatusHeader(viewModel: PokerViewModel) {
 
 @Composable
 fun SessionSetupScreen(viewModel: PokerViewModel) {
+    var isHostMode by remember { mutableStateOf(true) }
+    var joinUrlText by remember { mutableStateOf("") }
+
     var sessionName by remember { mutableStateOf("Friday Poker Night") }
     var smallBlindText by remember { mutableStateOf("10") }
     var bigBlindText by remember { mutableStateOf("20") }
@@ -471,81 +487,526 @@ fun SessionSetupScreen(viewModel: PokerViewModel) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Session Configuration", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
-
-        HostingStatusHeader(viewModel)
-
-        OutlinedTextField(
-            value = sessionName,
-            onValueChange = { sessionName = it },
-            label = { Text("Session Name") },
-            colors = tfColors,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
-                value = smallBlindText,
-                onValueChange = { smallBlindText = it },
-                label = { Text("Small Blind (chips)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = tfColors,
-                modifier = Modifier.weight(1f),
-            )
-            OutlinedTextField(
-                value = bigBlindText,
-                onValueChange = { bigBlindText = it },
-                label = { Text("Big Blind (chips)") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                colors = tfColors,
-                modifier = Modifier.weight(1f),
-            )
-        }
-
-        OutlinedTextField(
-            value = startingStackText,
-            onValueChange = { startingStackText = it },
-            label = { Text("Starting Stack per Player (chips)") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            colors = tfColors,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        OutlinedTextField(
-            value = playerNamesText,
-            onValueChange = { playerNamesText = it },
-            label = { Text("Players (comma-separated, clockwise)") },
-            colors = tfColors,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Text(
-            text = "Denomination: 1 chip = ₹0.01 (1 paise)",
-            color = Color.LightGray,
-            fontSize = 13.sp,
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        Button(
-            onClick = {
-                val names = playerNamesText.split(",").map { it.trim() }.filter { it.isNotBlank() }
-                viewModel.createSession(
-                    name = sessionName,
-                    smallBlind = smallBlindText.toLongOrNull() ?: 10L,
-                    bigBlind = bigBlindText.toLongOrNull() ?: 20L,
-                    chipValueInPaise = 1,
-                    playerNames = names,
-                    startingStack = startingStackText.toLongOrNull() ?: 1000L,
-                )
-            },
+        // Mode Selector: Host Session vs Join as Player
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                .background(Color(0xFF1E2F23), RoundedCornerShape(8.dp))
+                .padding(4.dp),
         ) {
-            Text("Start Session", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Button(
+                onClick = { isHostMode = true },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isHostMode) Color(0xFF2E7D32) else Color.Transparent,
+                ),
+            ) {
+                Text("Host Table", fontWeight = FontWeight.Bold, color = Color.White)
+            }
+            Button(
+                onClick = { isHostMode = false },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (!isHostMode) Color(0xFF2E7D32) else Color.Transparent,
+                ),
+            ) {
+                Text("Join as Player", fontWeight = FontWeight.Bold, color = Color.White)
+            }
         }
+
+        if (isHostMode) {
+            HostingStatusHeader(viewModel)
+
+            OutlinedTextField(
+                value = sessionName,
+                onValueChange = { sessionName = it },
+                label = { Text("Session Name") },
+                colors = tfColors,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = smallBlindText,
+                    onValueChange = { smallBlindText = it },
+                    label = { Text("Small Blind (chips)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = tfColors,
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = bigBlindText,
+                    onValueChange = { bigBlindText = it },
+                    label = { Text("Big Blind (chips)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = tfColors,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            OutlinedTextField(
+                value = startingStackText,
+                onValueChange = { startingStackText = it },
+                label = { Text("Starting Stack per Player (chips)") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                colors = tfColors,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = playerNamesText,
+                onValueChange = { playerNamesText = it },
+                label = { Text("Players (comma-separated, clockwise)") },
+                colors = tfColors,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Text(
+                text = "Denomination: 1 chip = ₹0.01 (1 paise)",
+                color = Color.LightGray,
+                fontSize = 13.sp,
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Button(
+                onClick = {
+                    val names = playerNamesText.split(",").map { it.trim() }.filter { it.isNotBlank() }
+                    viewModel.createSession(
+                        name = sessionName,
+                        smallBlind = smallBlindText.toLongOrNull() ?: 10L,
+                        bigBlind = bigBlindText.toLongOrNull() ?: 20L,
+                        chipValueInPaise = 1,
+                        playerNames = names,
+                        startingStack = startingStackText.toLongOrNull() ?: 1000L,
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+            ) {
+                Text("Start Session as Host", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
+        } else {
+            // Join Mode
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Connect to Host Phone", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFFFFD54F))
+                    Text(
+                        "Paste the Host Room Link or enter Host IP:Port (e.g. 192.168.1.105:8080)",
+                        fontSize = 12.sp,
+                        color = Color.LightGray,
+                    )
+
+                    OutlinedTextField(
+                        value = joinUrlText,
+                        onValueChange = { joinUrlText = it },
+                        label = { Text("Host URL or IP:Port") },
+                        colors = tfColors,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    Button(
+                        onClick = {
+                            if (joinUrlText.isNotBlank()) {
+                                viewModel.joinMultiplayerRoom(joinUrlText)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    ) {
+                        Text("Connect & Choose Seat", fontWeight = FontWeight.Bold, color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ClientSeatSelectionScreen(viewModel: PokerViewModel) {
+    val state by viewModel.uiState.collectAsState()
+    val clientState = state.clientSessionState
+
+    if (clientState !is ClientSessionState.SelectingSeat) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Connecting to Host...", color = Color.White, fontSize = 16.sp)
+        }
+        return
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Claim Your Seat", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+        Text("Room: ${clientState.roomId} (${clientState.sessionName})", fontSize = 14.sp, color = Color.LightGray)
+
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(clientState.availableSeats) { seat ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !seat.isOccupied) {
+                            viewModel.claimSeatAsClient(seat.playerId)
+                        },
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (seat.isOccupied) Color(0xFF212B23) else Color(0xFF1E3A24),
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = seat.displayName,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            color = if (seat.isOccupied) Color.Gray else Color.White,
+                        )
+                        Text(
+                            text = if (seat.isOccupied) "Occupied" else "Tap to Claim",
+                            color = if (seat.isOccupied) Color.Red else Color(0xFF81C784),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ClientPlayerTableScreen(viewModel: PokerViewModel) {
+    val state by viewModel.uiState.collectAsState()
+    val clientState = state.clientSessionState
+
+    if (clientState !is ClientSessionState.InGame) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Connecting to table...", color = Color.White)
+        }
+        return
+    }
+
+    val snap = clientState.snapshot
+    val table = snap.table
+    val privateState = snap.privateState
+    val legal = privateState.legalActions
+
+    var isPeekingCards by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // Table HUD Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "POT: ${viewModel.formatChipValue(table.totalPotChips)}",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFFFD54F),
+                )
+                Text(
+                    text = "Street: ${table.street} | Live Bet: ${table.currentLiveBet}",
+                    fontSize = 14.sp,
+                    color = Color.LightGray,
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 8.dp),
+                ) {
+                    if (table.communityCards.isEmpty()) {
+                        Text("No community cards yet", color = Color.Gray, fontSize = 12.sp)
+                    } else {
+                        table.communityCards.forEach { cardDto ->
+                            ClientCardDtoView(cardDto)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Seated Players List
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            items(table.players) { p ->
+                val isMe = p.playerId == clientState.myPlayerId
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = when {
+                            p.isFolded -> Color(0xFF262626)
+                            p.isTurn -> Color(0xFF2D5A37)
+                            else -> Color(0xFF1A2E20)
+                        },
+                    ),
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "${p.displayName} ${if (isMe) "(You)" else ""}",
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (p.isFolded) Color.Gray else Color.White,
+                                )
+                                if (p.isDealer) {
+                                    Text(" (DEALER)", color = Color(0xFFFFB300), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                }
+                            }
+                            Text("Stack: ${viewModel.formatChipValue(p.remainingStack)}", fontSize = 12.sp, color = Color.LightGray)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Bet: ${p.streetContribution}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFFFD54F))
+                            if (p.isFolded) {
+                                Text("FOLDED", color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            } else if (p.isAllIn) {
+                                Text("ALL-IN", color = Color.Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Private Hole Cards Box
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF162B1C)),
+            border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFF2E7D32)),
+        ) {
+            Column(
+                modifier = Modifier.padding(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("YOUR HOLE CARDS", color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Button(
+                        onClick = { isPeekingCards = !isPeekingCards },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    ) {
+                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isPeekingCards) "Hide" else "Peek Cards", fontSize = 11.sp)
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(top = 6.dp),
+                ) {
+                    val cards = privateState.holeCards
+                    if (cards != null && cards.size == 2 && isPeekingCards) {
+                        ClientCardDtoView(cards[0])
+                        ClientCardDtoView(cards[1])
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(width = 50.dp, height = 44.dp)
+                                .background(Color(0xFF1E2E22), RoundedCornerShape(4.dp))
+                                .border(1.dp, Color(0xFF455A64), RoundedCornerShape(4.dp)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("🂠", fontSize = 24.sp, color = Color.Gray)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(width = 50.dp, height = 44.dp)
+                                .background(Color(0xFF1E2E22), RoundedCornerShape(4.dp))
+                                .border(1.dp, Color(0xFF455A64), RoundedCornerShape(4.dp)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text("🂠", fontSize = 24.sp, color = Color.Gray)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Active Player Turn Controls
+        if (privateState.isYourTurn && legal != null) {
+            ClientTurnActionsBar(legal = legal) { type, amount ->
+                viewModel.sendClientAction(type, amount)
+            }
+        } else {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF142417)),
+            ) {
+                Box(modifier = Modifier.padding(14.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text("Waiting for other players to act...", color = Color.Gray, fontSize = 13.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ClientTurnActionsBar(
+    legal: LegalActionsDto,
+    onAction: (ActionType, Long) -> Unit,
+) {
+    var raiseText by remember(legal.minRaiseTo) { mutableStateOf(legal.minRaiseTo.toString()) }
+    var betText by remember(legal.minBetAmount) { mutableStateOf(legal.minBetAmount.toString()) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        if (legal.canBet) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(8.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Bet Amount:", color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = betText,
+                        onValueChange = { betText = it.filter { ch -> ch.isDigit() } },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.size(width = 110.dp, height = 46.dp),
+                    )
+                }
+            }
+        }
+
+        if (legal.canRaise) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(8.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Raise To:", color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = raiseText,
+                        onValueChange = { raiseText = it.filter { ch -> ch.isDigit() } },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.size(width = 110.dp, height = 46.dp),
+                    )
+                }
+            }
+        }
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (legal.canFold) {
+                Button(
+                    onClick = { onAction(ActionType.FOLD, 0L) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Fold", fontWeight = FontWeight.Bold)
+                }
+            }
+            if (legal.canCheck) {
+                Button(
+                    onClick = { onAction(ActionType.CHECK, 0L) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Check", fontWeight = FontWeight.Bold)
+                }
+            }
+            if (legal.canCall) {
+                Button(
+                    onClick = { onAction(ActionType.CALL, 0L) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Call ${legal.callAmount}", fontWeight = FontWeight.Bold)
+                }
+            }
+            if (legal.canBet) {
+                Button(
+                    onClick = { onAction(ActionType.BET, betText.toLongOrNull() ?: legal.minBetAmount) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Bet", fontWeight = FontWeight.Bold)
+                }
+            }
+            if (legal.canRaise) {
+                Button(
+                    onClick = { onAction(ActionType.RAISE, raiseText.toLongOrNull() ?: legal.minRaiseTo) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Raise", fontWeight = FontWeight.Bold)
+                }
+            }
+            if (legal.canAllIn) {
+                Button(
+                    onClick = { onAction(ActionType.ALL_IN, 0L) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("All-In", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ClientCardDtoView(cardDto: CardDto) {
+    val isRed = cardDto.suit == 'h' || cardDto.suit == 'd'
+    val suitSymbol = when (cardDto.suit) {
+        's' -> "♠"
+        'h' -> "♥"
+        'd' -> "♦"
+        else -> "♣"
+    }
+
+    Box(
+        modifier = Modifier
+            .background(Color.White, RoundedCornerShape(4.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        Text(
+            text = "${cardDto.rank}$suitSymbol",
+            color = if (isRed) Color(0xFFFF5252) else Color.Black,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+        )
     }
 }
 

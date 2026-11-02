@@ -31,6 +31,8 @@ import com.pokernight.shared.model.SessionId
 import com.pokernight.shared.model.SessionPlayer
 import com.pokernight.shared.model.SessionPlayerStatus
 import com.pokernight.shared.model.Street
+import com.pokernight.shared.multiplayer.client.ClientSessionState
+import com.pokernight.shared.multiplayer.client.PokerMultiplayerClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,6 +46,8 @@ enum class CurrentScreen {
     INTERMISSION,
     HISTORY,
     LOANS,
+    JOIN_ROOM,
+    CLIENT_GAME,
 }
 
 data class HostingStatus(
@@ -64,6 +68,7 @@ data class PokerUiState(
     val completedHands: List<Hand> = emptyList(),
     val loans: List<LoanRecord> = emptyList(),
     val hostingStatus: HostingStatus = HostingStatus(),
+    val clientSessionState: ClientSessionState = ClientSessionState.Disconnected,
     val errorMessage: String? = null,
 )
 
@@ -75,11 +80,25 @@ class PokerViewModel : ViewModel() {
     private val service = SessionPersistenceService(sessionRepo, handRepo, actionRepo)
 
     private var hostService: PokerHostService? = null
+    val multiplayerClient = PokerMultiplayerClient()
 
     private val _uiState = MutableStateFlow(PokerUiState())
     val uiState: StateFlow<PokerUiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            multiplayerClient.sessionState.collect { clientState ->
+                _uiState.value = _uiState.value.copy(
+                    clientSessionState = clientState,
+                    currentScreen = when (clientState) {
+                        is ClientSessionState.InGame -> CurrentScreen.CLIENT_GAME
+                        is ClientSessionState.SelectingSeat -> CurrentScreen.JOIN_ROOM
+                        else -> _uiState.value.currentScreen
+                    },
+                )
+            }
+        }
+
         val recovered = service.recoverActiveSession()
         if (recovered != null) {
             val (session, liveState) = recovered
@@ -150,6 +169,24 @@ class PokerViewModel : ViewModel() {
     private fun notifyHostServerStateChanged() {
         val session = _uiState.value.session ?: return
         hostService?.updateGameState(session, _uiState.value.liveState)
+    }
+
+    // Client Multiplayer actions
+    fun joinMultiplayerRoom(joinUrlOrIp: String) {
+        multiplayerClient.connect(joinUrlOrIp)
+    }
+
+    fun claimSeatAsClient(playerId: String) {
+        multiplayerClient.claimSeat(playerId)
+    }
+
+    fun sendClientAction(actionType: ActionType, targetAmount: Long = 0L) {
+        multiplayerClient.sendAction(actionType, targetAmount)
+    }
+
+    fun disconnectClient() {
+        multiplayerClient.disconnect()
+        _uiState.value = _uiState.value.copy(currentScreen = CurrentScreen.SETUP)
     }
 
     fun createSession(
@@ -457,6 +494,7 @@ class PokerViewModel : ViewModel() {
 
     fun resetEntireSession() {
         hostService?.stopHosting()
+        multiplayerClient.disconnect()
         _uiState.value = PokerUiState(currentScreen = CurrentScreen.SETUP)
     }
 

@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -112,16 +113,18 @@ class PokerHostServer(
                             isOccupied = occupiedPlayers.contains(sp.playerId),
                         )
                     }
-                    val lobby = ServerPayload.RoomLobby(
+                    val lobby: ServerPayload = ServerPayload.RoomLobby(
                         roomId = roomId,
                         sessionName = session.name,
                         availableSeats = seats,
                         requiresPairingToken = true,
                     )
-                    call.respond(lobby)
+                    call.respondText(
+                        json.encodeToString<ServerPayload>(lobby),
+                        ContentType.Application.Json,
+                    )
                 }
 
-                // Web App Routes
                 get("/") {
                     serveWebAsset("index.html", ContentType.Text.Html)
                 }
@@ -168,7 +171,6 @@ class PokerHostServer(
         if (bytes != null) {
             call.respondBytes(bytes, contentType)
         } else {
-            // Default embedded fallback HTML if assets not attached
             call.respondText(
                 "<!DOCTYPE html><html><head><title>Poker Night</title></head><body><h3>Poker Night Web Client</h3></body></html>",
                 ContentType.Text.Html,
