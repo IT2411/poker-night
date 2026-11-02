@@ -34,7 +34,7 @@ import kotlin.test.assertTrue
 
 class PokerHostServerTest {
 
-    private val testPort = 8089
+    private val testPort = 8094
     private lateinit var server: PokerHostServer
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -144,6 +144,84 @@ class PokerHostServerTest {
             assertTrue(ackMsg.payload is ServerPayload.ActionAck)
             val actionAck = ackMsg.payload as ServerPayload.ActionAck
             assertEquals("act-2", actionAck.actionId)
+
+            // Consume updated GameSnapshot broadcast
+            val updatedSnapFrame = incoming.receive() as Frame.Text
+            val updatedSnapMsg = json.decodeFromString<ServerMessage>(updatedSnapFrame.readText())
+            assertTrue(updatedSnapMsg.payload is ServerPayload.GameSnapshot)
+
+            // 4. Test Idempotency Retry: Alice re-sends act-2!
+            send(json.encodeToString(callAction))
+            val retryFrame = incoming.receive() as Frame.Text
+            val retryMsg = json.decodeFromString<ServerMessage>(retryFrame.readText())
+            assertTrue(retryMsg.payload is ServerPayload.ActionAck)
+            assertEquals("act-2", (retryMsg.payload as ServerPayload.ActionAck).actionId)
+        }
+
+        httpClient.close()
+    }
+
+    @Test
+    fun testReconnectionWithSeatTokenRestoresPrivateHoleCards() = runBlocking {
+        val session = createTestSession()
+        val init = HandInitializer.initializeHand(session, HandId("h1"), 1, p1, 1000L)
+        val updatedPlayers = init.hand.players.map { hp ->
+            if (hp.playerId == p1) {
+                hp.copy(holeCards = listOf(Card.parse("Ah"), Card.parse("Kd")))
+            } else {
+                hp.copy(holeCards = listOf(Card.parse("2c"), Card.parse("3d")))
+            }
+        }
+        val hand = init.hand.copy(players = updatedPlayers)
+        val state = BettingEngine.createPreFlopState(hand, session.smallBlind, session.bigBlind, p1, init.initialActions)
+
+        server.updateGameState(session, state)
+
+        val httpClient = HttpClient(CIO) {
+            install(WebSockets)
+        }
+
+        var savedSeatToken: String? = null
+
+        // Session 1: Claim seat and save seatToken
+        httpClient.webSocket(host = "127.0.0.1", port = testPort, path = "/ws/poker") {
+            val claimMsg = ClientMessage(
+                actionId = "act-initial-claim",
+                payload = ClientPayload.ClaimSeat(p1.value, server.pairingSecret),
+            )
+            send(json.encodeToString(claimMsg))
+
+            val frame = incoming.receive() as Frame.Text
+            val msg = json.decodeFromString<ServerMessage>(frame.readText())
+            savedSeatToken = (msg.payload as ServerPayload.SeatConfirmed).seatToken
+
+            // Consume snapshot
+            incoming.receive()
+        }
+
+        assertNotNull(savedSeatToken)
+
+        // Session 2: Phone screen was locked and now reconnects with savedSeatToken
+        httpClient.webSocket(host = "127.0.0.1", port = testPort, path = "/ws/poker") {
+            val reconnectMsg = ClientMessage(
+                actionId = "act-reconnect-1",
+                seatToken = savedSeatToken,
+                payload = ClientPayload.Reconnect(lastSeenRevision = 1L),
+            )
+            send(json.encodeToString(reconnectMsg))
+
+            // Receives SeatConfirmed
+            val confirmFrame = incoming.receive() as Frame.Text
+            val confirmMsg = json.decodeFromString<ServerMessage>(confirmFrame.readText())
+            assertTrue(confirmMsg.payload is ServerPayload.SeatConfirmed)
+
+            // Receives fresh GameSnapshot with Alice's hole cards intact!
+            val snapFrame = incoming.receive() as Frame.Text
+            val snapMsg = json.decodeFromString<ServerMessage>(snapFrame.readText())
+            assertTrue(snapMsg.payload is ServerPayload.GameSnapshot)
+            val snapshot = (snapMsg.payload as ServerPayload.GameSnapshot).snapshot
+            assertEquals("A", snapshot.privateState.holeCards?.get(0)?.rank)
+            assertEquals("K", snapshot.privateState.holeCards?.get(1)?.rank)
         }
 
         httpClient.close()

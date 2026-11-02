@@ -20,6 +20,7 @@ object StateSanitizer {
         state: BettingState,
         forPlayerId: PlayerId?,
         stateRevision: Long,
+        connectedPlayerIds: Set<PlayerId> = emptySet(),
     ): SanitizedGameStateSnapshot {
         val hand = state.hand
         val isShowdown = hand.status == HandStatus.SHOWDOWN || hand.status == HandStatus.COMPLETED
@@ -34,6 +35,8 @@ object StateSanitizer {
                 null
             }
 
+            val isOnline = if (connectedPlayerIds.isEmpty()) true else connectedPlayerIds.contains(hp.playerId)
+
             PublicPlayerDto(
                 playerId = hp.playerId.value,
                 displayName = hp.playerId.value.substringAfterLast("-"),
@@ -45,6 +48,7 @@ object StateSanitizer {
                 isAllIn = hp.allIn,
                 isDealer = hp.playerId == hand.dealerPlayerId,
                 isTurn = hp.playerId == state.activePlayerId,
+                isConnected = isOnline,
                 revealedHoleCards = revealedCards,
             )
         }

@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 class PokerHostServer(
     val port: Int = 8080,
@@ -55,6 +56,9 @@ class PokerHostServer(
     private var currentSession: Session? = null
     private var currentBettingState: BettingState? = null
     private var stateRevision: Long = 1L
+    private var lastRecordedHandNumber: Int = -1
+
+    private val processedActions = ConcurrentHashMap<String, ServerPayload.ActionAck>()
 
     private val _connectedCount = MutableStateFlow(0)
     val connectedCount: StateFlow<Int> = _connectedCount.asStateFlow()
@@ -62,6 +66,13 @@ class PokerHostServer(
     fun updateGameState(session: Session, bettingState: BettingState?) {
         this.currentSession = session
         this.currentBettingState = bettingState
+
+        val handNumber = bettingState?.hand?.handNumber ?: -1
+        if (handNumber != lastRecordedHandNumber) {
+            processedActions.clear()
+            lastRecordedHandNumber = handNumber
+        }
+
         this.stateRevision++
         broadcastSanitizedState()
     }
@@ -78,7 +89,7 @@ class PokerHostServer(
             routing {
                 get("/health") {
                     call.respondText(
-                        """{"status":"ok","roomId":"$roomId"}""",
+                        """{"status":"ok","roomId":"$roomId","revision":$stateRevision}""",
                         ContentType.Application.Json,
                     )
                 }
@@ -122,6 +133,7 @@ class PokerHostServer(
                     } finally {
                         sessionRegistry.unregisterConnection(connectionId)
                         _connectedCount.value = sessionRegistry.getAllClients().size
+                        broadcastSanitizedState()
                     }
                 }
             }
@@ -131,6 +143,7 @@ class PokerHostServer(
     fun stop() {
         engine?.stop(1000, 2000)
         engine = null
+        processedActions.clear()
     }
 
     private suspend fun handleClientMessage(
@@ -174,6 +187,7 @@ class PokerHostServer(
                 val sessionObj = currentSession
                 val seatIndex = sessionObj?.players?.firstOrNull { it.playerId == pId }?.seatIndex ?: 0
 
+                // 1. Send SeatConfirmed
                 sessionRegistry.sendMessage(
                     session,
                     ServerMessage(
@@ -187,10 +201,24 @@ class PokerHostServer(
                     ),
                 )
 
-                sendSanitizedStateToConnection(connectionId)
+                // 2. Broadcast single snapshot to all seated players (including this connection)
+                broadcastSanitizedState()
             }
 
             is ClientPayload.RequestAction -> {
+                val cachedAck = processedActions[clientMsg.actionId]
+                if (cachedAck != null) {
+                    sessionRegistry.sendMessage(
+                        session,
+                        ServerMessage(
+                            stateRevision = stateRevision,
+                            ackActionId = clientMsg.actionId,
+                            payload = cachedAck,
+                        ),
+                    )
+                    return
+                }
+
                 val seatToken = clientMsg.seatToken
                 val pId = seatToken?.let { sessionRegistry.getPlayerIdForSeatToken(it) }
 
@@ -227,12 +255,15 @@ class PokerHostServer(
                     currentBettingState = updated
                     stateRevision++
 
+                    val ack = ServerPayload.ActionAck(clientMsg.actionId, updated.actionHistory.size)
+                    processedActions[clientMsg.actionId] = ack
+
                     sessionRegistry.sendMessage(
                         session,
                         ServerMessage(
                             stateRevision = stateRevision,
                             ackActionId = clientMsg.actionId,
-                            payload = ServerPayload.ActionAck(clientMsg.actionId, updated.actionHistory.size),
+                            payload = ack,
                         ),
                     )
                     broadcastSanitizedState()
@@ -252,10 +283,36 @@ class PokerHostServer(
             is ClientPayload.Reconnect -> {
                 val seatToken = clientMsg.seatToken
                 val pId = seatToken?.let { sessionRegistry.getPlayerIdForSeatToken(it) }
+
                 if (pId != null) {
                     sessionRegistry.bindSeat(connectionId, seatToken, pId)
+                    val sessionObj = currentSession
+                    val seatIndex = sessionObj?.players?.firstOrNull { it.playerId == pId }?.seatIndex ?: 0
+
+                    sessionRegistry.sendMessage(
+                        session,
+                        ServerMessage(
+                            stateRevision = stateRevision,
+                            ackActionId = clientMsg.actionId,
+                            payload = ServerPayload.SeatConfirmed(
+                                seatToken = seatToken,
+                                playerId = pId.value,
+                                seatIndex = seatIndex,
+                            ),
+                        ),
+                    )
+                    broadcastSanitizedState()
+                } else {
+                    sessionRegistry.sendMessage(
+                        session,
+                        ServerMessage(
+                            stateRevision = stateRevision,
+                            ackActionId = clientMsg.actionId,
+                            errorMessage = "Invalid or expired seat token",
+                            payload = ServerPayload.ActionNack(clientMsg.actionId, "Invalid or expired seat token"),
+                        ),
+                    )
                 }
-                sendSanitizedStateToConnection(connectionId)
             }
 
             is ClientPayload.Heartbeat -> {
@@ -264,32 +321,10 @@ class PokerHostServer(
         }
     }
 
-    private fun sendSanitizedStateToConnection(connectionId: String) {
-        val client = sessionRegistry.getClient(connectionId) ?: return
-        val sessionObj = currentSession ?: return
-        val bettingStateObj = currentBettingState ?: return
-
-        val snapshot = StateSanitizer.createSanitizedSnapshot(
-            session = sessionObj,
-            state = bettingStateObj,
-            forPlayerId = client.playerId,
-            stateRevision = stateRevision,
-        )
-
-        serverScope.launch {
-            sessionRegistry.sendMessage(
-                client.session,
-                ServerMessage(
-                    stateRevision = stateRevision,
-                    payload = ServerPayload.GameSnapshot(snapshot),
-                ),
-            )
-        }
-    }
-
     private fun broadcastSanitizedState() {
         val sessionObj = currentSession ?: return
         val bettingStateObj = currentBettingState ?: return
+        val connectedIds = sessionRegistry.getAllClients().mapNotNull { it.playerId }.toSet()
 
         serverScope.launch {
             sessionRegistry.getAllClients().forEach { client ->
@@ -298,6 +333,7 @@ class PokerHostServer(
                     state = bettingStateObj,
                     forPlayerId = client.playerId,
                     stateRevision = stateRevision,
+                    connectedPlayerIds = connectedIds,
                 )
                 sessionRegistry.sendMessage(
                     client.session,

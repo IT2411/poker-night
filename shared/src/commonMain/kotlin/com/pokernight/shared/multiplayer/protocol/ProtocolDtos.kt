@@ -32,6 +32,7 @@ data class PublicPlayerDto(
     val isAllIn: Boolean,
     val isDealer: Boolean,
     val isTurn: Boolean,
+    val isConnected: Boolean = true,
     val revealedHoleCards: List<CardDto>? = null,
 )
 
