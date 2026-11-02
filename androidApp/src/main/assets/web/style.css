@@ -1,0 +1,324 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    background-color: #0F1A12;
+    color: #FFFFFF;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.top-bar {
+    background-color: #1B3B22;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #2E4532;
+}
+
+.logo {
+    font-size: 18px;
+    font-weight: bold;
+    color: #FFD54F;
+}
+
+.badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.badge-connected { background-color: #2E7D32; color: #fff; }
+.badge-connecting { background-color: #F57F17; color: #fff; }
+.badge-error { background-color: #C62828; color: #fff; }
+
+.main-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.hud-card {
+    background-color: #1E3A24;
+    border-radius: 12px;
+    padding: 12px;
+    text-align: center;
+    border: 1px solid #2E4532;
+}
+
+.hud-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.street-tag {
+    background-color: #142C1B;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: bold;
+    color: #81C784;
+}
+
+.pot-tag {
+    font-size: 18px;
+    font-weight: bold;
+    color: #FFD54F;
+}
+
+.live-bet-label {
+    font-size: 13px;
+    color: #B0BEC5;
+    margin-top: 4px;
+}
+
+.cards-row {
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+    margin-top: 8px;
+    min-height: 48px;
+    align-items: center;
+}
+
+.empty-board-text {
+    font-size: 12px;
+    color: #78909C;
+}
+
+.card {
+    background-color: #FFFFFF;
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 16px;
+    font-weight: bold;
+    color: #000;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    min-width: 44px;
+    text-align: center;
+}
+
+.card.red { color: #E53935; }
+.card.black { color: #212121; }
+
+.card-back {
+    background-color: #1E2E22;
+    border: 1px dashed #455A64;
+    color: #78909C;
+}
+
+.section-title {
+    font-size: 13px;
+    font-weight: bold;
+    color: #B0BEC5;
+    margin-top: 4px;
+}
+
+.players-container {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 140px;
+    overflow-y: auto;
+}
+
+.player-card {
+    background-color: #1A2E20;
+    border-radius: 8px;
+    padding: 8px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    border: 1px solid transparent;
+}
+
+.player-card.active-turn {
+    border-color: #FFD54F;
+    background-color: #2D5A37;
+}
+
+.player-card.folded {
+    opacity: 0.5;
+    background-color: #262626;
+}
+
+.private-cards-box {
+    background-color: #162B1C;
+    border-radius: 12px;
+    padding: 12px;
+    border: 2px solid #2E7D32;
+    text-align: center;
+    margin-top: auto;
+}
+
+.private-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    font-weight: bold;
+    color: #FFD54F;
+    margin-bottom: 8px;
+}
+
+.peek-btn {
+    background-color: #2E7D32;
+    border: none;
+    color: #fff;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.blur-cards .card:not(.card-back) {
+    filter: blur(8px);
+}
+
+.action-bar {
+    background-color: #142417;
+    padding: 12px;
+    border-top: 1px solid #2E4532;
+    min-height: 80px;
+}
+
+.waiting-turn {
+    text-align: center;
+    color: #90A4AE;
+    font-size: 14px;
+    padding: 14px 0;
+}
+
+.buttons-grid {
+    display: flex;
+    gap: 8px;
+}
+
+.btn {
+    flex: 1;
+    padding: 14px 0;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: bold;
+    color: #fff;
+    cursor: pointer;
+}
+
+.btn:active { transform: scale(0.97); }
+
+.btn-fold { background-color: #C62828; }
+.btn-check { background-color: #1565C0; }
+.btn-call { background-color: #2E7D32; }
+.btn-bet { background-color: #2E7D32; }
+.btn-raise { background-color: #E65100; }
+.btn-allin { background-color: #6A1B9A; }
+
+.raise-box {
+    background-color: #1E3A24;
+    border-radius: 8px;
+    padding: 8px;
+    margin-bottom: 8px;
+}
+
+.raise-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.num-input {
+    width: 100px;
+    padding: 6px;
+    background-color: #142417;
+    border: 1px solid #FFD54F;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 16px;
+    font-weight: bold;
+    text-align: right;
+}
+
+.quick-btns-row {
+    display: flex;
+    gap: 6px;
+}
+
+.small-btn {
+    flex: 1;
+    padding: 6px;
+    background-color: #2E4532;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: rgba(0,0,0,0.85);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    z-index: 100;
+}
+
+.modal-card {
+    background-color: #1E3A24;
+    border-radius: 14px;
+    padding: 20px;
+    width: 100%;
+    max-width: 380px;
+    border: 2px solid #2E7D32;
+    text-align: center;
+}
+
+.seats-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.seat-btn {
+    padding: 14px;
+    background-color: #2E7D32;
+    border: none;
+    border-radius: 8px;
+    color: #fff;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.seat-btn:disabled {
+    background-color: #37474F;
+    color: #90A4AE;
+}
+
+.text-gold { color: #FFD54F; }
+.font-bold { font-weight: bold; }
+.hidden { display: none !important; }

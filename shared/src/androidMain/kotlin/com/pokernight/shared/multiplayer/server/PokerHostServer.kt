@@ -20,6 +20,7 @@ import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
@@ -57,6 +58,8 @@ class PokerHostServer(
     private var currentBettingState: BettingState? = null
     private var stateRevision: Long = 1L
     private var lastRecordedHandNumber: Int = -1
+
+    var webAssetProvider: ((path: String) -> ByteArray?)? = null
 
     private val processedActions = ConcurrentHashMap<String, ServerPayload.ActionAck>()
 
@@ -118,6 +121,23 @@ class PokerHostServer(
                     call.respond(lobby)
                 }
 
+                // Web App Routes
+                get("/") {
+                    serveWebAsset("index.html", ContentType.Text.Html)
+                }
+
+                get("/join") {
+                    serveWebAsset("index.html", ContentType.Text.Html)
+                }
+
+                get("/style.css") {
+                    serveWebAsset("style.css", ContentType.Text.CSS)
+                }
+
+                get("/app.js") {
+                    serveWebAsset("app.js", ContentType.Application.JavaScript)
+                }
+
                 webSocket("/ws/poker") {
                     val connectionId = UUID.randomUUID().toString()
                     sessionRegistry.registerConnection(connectionId, this)
@@ -138,6 +158,22 @@ class PokerHostServer(
                 }
             }
         }.start(wait = false)
+    }
+
+    private suspend fun io.ktor.server.routing.RoutingContext.serveWebAsset(
+        fileName: String,
+        contentType: ContentType,
+    ) {
+        val bytes = webAssetProvider?.invoke(fileName)
+        if (bytes != null) {
+            call.respondBytes(bytes, contentType)
+        } else {
+            // Default embedded fallback HTML if assets not attached
+            call.respondText(
+                "<!DOCTYPE html><html><head><title>Poker Night</title></head><body><h3>Poker Night Web Client</h3></body></html>",
+                ContentType.Text.Html,
+            )
+        }
     }
 
     fun stop() {
@@ -187,7 +223,6 @@ class PokerHostServer(
                 val sessionObj = currentSession
                 val seatIndex = sessionObj?.players?.firstOrNull { it.playerId == pId }?.seatIndex ?: 0
 
-                // 1. Send SeatConfirmed
                 sessionRegistry.sendMessage(
                     session,
                     ServerMessage(
@@ -201,7 +236,6 @@ class PokerHostServer(
                     ),
                 )
 
-                // 2. Broadcast single snapshot to all seated players (including this connection)
                 broadcastSanitizedState()
             }
 

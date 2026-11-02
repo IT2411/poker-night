@@ -62,6 +62,16 @@ class PokerHostService : Service() {
 
         localIp = NetworkUtils.getLocalIpAddress()
         val newServer = PokerHostServer(port = port)
+
+        // Wire up local Android asset loader for web client files
+        newServer.webAssetProvider = { fileName ->
+            try {
+                assets.open("web/$fileName").use { it.readBytes() }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
         this.server = newServer
 
         _roomId.value = newServer.roomId

@@ -76,6 +76,21 @@ class PokerHostServerTest {
     }
 
     @Test
+    fun testJoinRouteServesHtmlWebApplication() = runBlocking {
+        server.webAssetProvider = { path: String ->
+            if (path == "index.html") "<html><body>Poker Night Mock Web App</body></html>".toByteArray() else null
+        }
+
+        val client = HttpClient(CIO)
+        val response = client.get("http://127.0.0.1:$testPort/join")
+        val body = response.bodyAsText()
+
+        assertEquals(200, response.status.value)
+        assertTrue(body.contains("Poker Night Mock Web App"))
+        client.close()
+    }
+
+    @Test
     fun testWebSocketConnectClaimSeatAndSanitizedStateDelivery() = runBlocking {
         val session = createTestSession()
         val init = HandInitializer.initializeHand(session, HandId("h1"), 1, p1, 1000L)

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Poker Night ♠️</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Top Status Bar -->
+        <header class="top-bar">
+            <div class="logo">Poker Night ♠️</div>
+            <div id="connection-badge" class="badge badge-connecting">Connecting...</div>
+        </header>
+
+        <!-- Seat Claim Overlay (Shown until seated) -->
+        <div id="lobby-modal" class="modal-overlay hidden">
+            <div class="modal-card">
+                <h2>Claim Your Seat</h2>
+                <p id="room-info" class="text-gold"></p>
+                <div id="seats-list" class="seats-list"></div>
+            </div>
+        </div>
+
+        <!-- Main Game Area -->
+        <main id="game-view" class="main-content">
+            <!-- Table HUD Card -->
+            <div class="hud-card">
+                <div class="hud-row">
+                    <span id="street-label" class="street-tag">PRE_FLOP</span>
+                    <span id="pot-amount" class="pot-tag">Pot: 0</span>
+                </div>
+                <div class="live-bet-label">Live Bet: <span id="live-bet-amount">0</span></div>
+
+                <!-- Community Cards -->
+                <div id="board-cards" class="cards-row">
+                    <div class="empty-board-text">No community cards yet</div>
+                </div>
+            </div>
+
+            <!-- Table Players Scroll -->
+            <div class="section-title">Table Players</div>
+            <div id="players-list" class="players-container"></div>
+
+            <!-- Private Hole Cards Area -->
+            <div class="private-cards-box">
+                <div class="private-header">
+                    <span>YOUR HOLE CARDS</span>
+                    <button id="peek-toggle-btn" class="peek-btn">👁️ Hold to Peek</button>
+                </div>
+                <div id="hole-cards" class="cards-row hole-cards-row blur-cards">
+                    <div class="card card-back">🂠</div>
+                    <div class="card card-back">🂠</div>
+                </div>
+            </div>
+
+            <!-- Action Controls Bar -->
+            <div id="action-bar" class="action-bar">
+                <div id="waiting-msg" class="waiting-turn">Waiting for other players to act...</div>
+
+                <div id="active-controls" class="controls-panel hidden">
+                    <!-- Raise Input Controls -->
+                    <div id="raise-controls-box" class="raise-box hidden">
+                        <div class="raise-header">
+                            <span id="target-label" class="text-gold font-bold">Raise To:</span>
+                            <input type="number" id="target-amount-input" class="num-input">
+                        </div>
+                        <div class="quick-btns-row">
+                            <button id="min-btn" class="small-btn">Min</button>
+                            <button id="plus5-btn" class="small-btn">+5</button>
+                            <button id="plus10-btn" class="small-btn">+10</button>
+                            <button id="pot-btn" class="small-btn">Pot</button>
+                        </div>
+                    </div>
+
+                    <!-- Main Buttons Row -->
+                    <div class="buttons-grid">
+                        <button id="fold-btn" class="btn btn-fold">Fold</button>
+                        <button id="check-btn" class="btn btn-check">Check</button>
+                        <button id="call-btn" class="btn btn-call">Call</button>
+                        <button id="bet-btn" class="btn btn-bet">Bet</button>
+                        <button id="raise-btn" class="btn btn-raise">Raise</button>
+                        <button id="allin-btn" class="btn btn-allin">All-In</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
