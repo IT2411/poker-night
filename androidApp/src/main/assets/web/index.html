@@ -14,12 +14,23 @@
             <div id="connection-badge" class="badge badge-connecting">Connecting...</div>
         </header>
 
-        <!-- Seat Claim Overlay (Shown until seated) -->
+        <!-- Android APK Download Banner -->
+        <div class="download-banner">
+            <span>Android phone?</span>
+            <a href="/download/poker-night.apk" class="download-apk-link">📥 Download Native App</a>
+        </div>
+
+        <!-- Seat Claim Overlay -->
         <div id="lobby-modal" class="modal-overlay hidden">
             <div class="modal-card">
                 <h2>Claim Your Seat</h2>
                 <p id="room-info" class="text-gold"></p>
                 <div id="seats-list" class="seats-list"></div>
+
+                <div class="modal-footer-apk">
+                    <p style="font-size:12px; color:#B0BEC5; margin-bottom:6px;">Prefer the native Android app?</p>
+                    <a href="/download/poker-night.apk" class="btn btn-download-apk">📥 Download APK (Free)</a>
+                </div>
             </div>
         </div>
 
@@ -39,23 +50,11 @@
                 </div>
             </div>
 
-            <!-- Table Players Scroll -->
+            <!-- Table Players List -->
             <div class="section-title">Table Players</div>
             <div id="players-list" class="players-container"></div>
 
-            <!-- Private Hole Cards Area -->
-            <div class="private-cards-box">
-                <div class="private-header">
-                    <span>YOUR HOLE CARDS</span>
-                    <button id="peek-toggle-btn" class="peek-btn">👁️ Hold to Peek</button>
-                </div>
-                <div id="hole-cards" class="cards-row hole-cards-row blur-cards">
-                    <div class="card card-back">🂠</div>
-                    <div class="card card-back">🂠</div>
-                </div>
-            </div>
-
-            <!-- Action Controls Bar -->
+            <!-- Action Controls Bar (Pinned at bottom) -->
             <div id="action-bar" class="action-bar">
                 <div id="waiting-msg" class="waiting-turn">Waiting for other players to act...</div>
 

@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Card 1 (Left - Ace of Spades, tilted -14 degrees) -->
+    <group
+        android:pivotX="42"
+        android:pivotY="48"
+        android:rotation="-14">
+        <!-- Shadow -->
+        <path
+            android:pathData="M31,27 h22 a4,4 0 0,1 4,4 v34 a4,4 0 0,1 -4,4 h-22 a4,4 0 0,1 -4,-4 v-34 a4,4 0 0,1 4,-4 z"
+            android:fillColor="#15000000" />
+        <!-- White Card Body -->
+        <path
+            android:pathData="M30,26 h22 a4,4 0 0,1 4,4 v34 a4,4 0 0,1 -4,4 h-22 a4,4 0 0,1 -4,-4 v-34 a4,4 0 0,1 4,-4 z"
+            android:fillColor="#FFFFFF" />
+        <path
+            android:pathData="M30,26 h22 a4,4 0 0,1 4,4 v34 a4,4 0 0,1 -4,4 h-22 a4,4 0 0,1 -4,-4 v-34 a4,4 0 0,1 4,-4 z"
+            android:strokeColor="#CFD8DC"
+            android:strokeWidth="0.8" />
+        <!-- Corner 'A' -->
+        <path
+            android:pathData="M33,32 L35,28 L37,32 M33.5,31 H36.5"
+            android:strokeColor="#1E232A"
+            android:strokeWidth="1" />
+        <!-- Center Spade Symbol -->
+        <path
+            android:pathData="M41,45 C38,41 35,44 37,47 C38.5,49.5 41,52 41,52 C41,52 43.5,49.5 45,47 C47,44 44,41 41,45 Z M40,51 L39,55 H43 L42,51 Z"
+            android:fillColor="#1E232A" />
+    </group>
+
+    <!-- Card 2 (Right - Ace of Hearts, tilted +12 degrees) -->
+    <group
+        android:pivotX="64"
+        android:pivotY="48"
+        android:rotation="12">
+        <!-- Shadow -->
+        <path
+            android:pathData="M53,27 h22 a4,4 0 0,1 4,4 v34 a4,4 0 0,1 -4,4 h-22 a4,4 0 0,1 -4,-4 v-34 a4,4 0 0,1 4,-4 z"
+            android:fillColor="#20000000" />
+        <!-- White Card Body -->
+        <path
+            android:pathData="M52,26 h22 a4,4 0 0,1 4,4 v34 a4,4 0 0,1 -4,4 h-22 a4,4 0 0,1 -4,-4 v-34 a4,4 0 0,1 4,-4 z"
+            android:fillColor="#FAFAFA" />
+        <path
+            android:pathData="M52,26 h22 a4,4 0 0,1 4,4 v34 a4,4 0 0,1 -4,4 h-22 a4,4 0 0,1 -4,-4 v-34 a4,4 0 0,1 4,-4 z"
+            android:strokeColor="#CFD8DC"
+            android:strokeWidth="0.8" />
+        <!-- Corner 'A' -->
+        <path
+            android:pathData="M55,32 L57,28 L59,32 M55.5,31 H58.5"
+            android:strokeColor="#D32F2F"
+            android:strokeWidth="1" />
+        <!-- Center Heart Symbol -->
+        <path
+            android:pathData="M63,44 C61.5,41.5 57.5,42.5 58,46 C58.5,49.5 63,53 63,53 C63,53 67.5,49.5 68,46 C68.5,42.5 64.5,41.5 63,44 Z"
+            android:fillColor="#E53935" />
+    </group>
+
+    <!-- Golden Casino Poker Chip (Overlaid at bottom center) -->
+    <group>
+        <!-- Chip Drop Shadow -->
+        <path
+            android:pathData="M54,67m-17,0a17,17 0 1,0 34,0a17,17 0 1,0 -34,0"
+            android:fillColor="#40000000" />
+        <!-- Outer Gold Ring -->
+        <path
+            android:pathData="M54,65m-16,0a16,16 0 1,0 32,0a16,16 0 1,0 -32,0"
+            android:fillColor="#FFB300" />
+        <!-- Outer Edge Border -->
+        <path
+            android:pathData="M54,65m-16,0a16,16 0 1,0 32,0a16,16 0 1,0 -32,0"
+            android:strokeColor="#FFA000"
+            android:strokeWidth="1.2" />
+
+        <!-- Casino Clay Chip Edge Notches (White Inserts) -->
+        <path
+            android:pathData="M52,49 H56 V53 H52 Z M52,77 H56 V81 H52 Z M38,63 H42 V67 H38 Z M66,63 H70 V67 H66 Z"
+            android:fillColor="#FFFFFF" />
+        <path
+            android:pathData="M43,53 L46,56 L43,59 L40,56 Z M65,71 L68,74 L65,77 L62,74 Z M65,53 L68,56 L65,59 L62,56 Z M43,71 L46,74 L43,77 L40,74 Z"
+            android:fillColor="#FFFFFF" />
+
+        <!-- Inner Chip Inlay -->
+        <path
+            android:pathData="M54,65m-11,0a11,11 0 1,0 22,0a11,11 0 1,0 -22,0"
+            android:fillColor="#FFD54F" />
+        <path
+            android:pathData="M54,65m-11,0a11,11 0 1,0 22,0a11,11 0 1,0 -22,0"
+            android:strokeColor="#FF8F00"
+            android:strokeWidth="1" />
+
+        <!-- Star in Chip Center -->
+        <path
+            android:pathData="M54,59 L55.5,63.5 H60 L56.5,66 L58,70.5 L54,67.8 L50,70.5 L51.5,66 L48,63.5 H52.5 Z"
+            android:fillColor="#E65100" />
+    </group>
+
+</vector>

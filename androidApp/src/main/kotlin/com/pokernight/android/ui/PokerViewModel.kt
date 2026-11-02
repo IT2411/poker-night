@@ -2,6 +2,7 @@ package com.pokernight.android.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.pokernight.android.network.NetworkUtils
 import com.pokernight.android.network.PokerHostService
 import com.pokernight.shared.data.InMemoryActionRepository
 import com.pokernight.shared.data.InMemoryHandRepository
@@ -68,7 +69,9 @@ data class PokerUiState(
     val completedHands: List<Hand> = emptyList(),
     val loans: List<LoanRecord> = emptyList(),
     val hostingStatus: HostingStatus = HostingStatus(),
+    val hostPlayerId: PlayerId? = null,
     val clientSessionState: ClientSessionState = ClientSessionState.Disconnected,
+    val isSearchingHost: Boolean = false,
     val errorMessage: String? = null,
 )
 
@@ -115,12 +118,32 @@ class PokerViewModel : ViewModel() {
                 liveState = liveState,
                 legalActions = legal,
                 potCalculation = pots,
+                hostPlayerId = session.players.firstOrNull()?.playerId,
             )
         }
     }
 
     fun bindHostService(service: PokerHostService) {
         this.hostService = service
+
+        // Real-time synchronization: Host screen automatically redraws when a remote player acts!
+        service.onClientActionReceived = { updatedState ->
+            viewModelScope.launch {
+                val legal = if (updatedState.activePlayerId != null) {
+                    BettingEngine.getLegalActions(updatedState, updatedState.activePlayerId!!)
+                } else {
+                    null
+                }
+                val pots = PotCalculator.calculatePots(updatedState.hand)
+
+                _uiState.value = _uiState.value.copy(
+                    liveState = updatedState,
+                    legalActions = legal,
+                    potCalculation = pots,
+                )
+            }
+        }
+
         viewModelScope.launch {
             launch {
                 service.isHosting.collect { hosting ->
@@ -150,6 +173,11 @@ class PokerViewModel : ViewModel() {
         }
     }
 
+    fun setHostIdentity(playerId: PlayerId) {
+        _uiState.value = _uiState.value.copy(hostPlayerId = playerId)
+        notifyHostServerStateChanged()
+    }
+
     fun toggleHosting(enable: Boolean) {
         val s = hostService ?: return
         if (enable) {
@@ -171,9 +199,27 @@ class PokerViewModel : ViewModel() {
         hostService?.updateGameState(session, _uiState.value.liveState)
     }
 
-    // Client Multiplayer actions
-    fun joinMultiplayerRoom(joinUrlOrIp: String) {
-        multiplayerClient.connect(joinUrlOrIp)
+    fun joinMultiplayerRoom(input: String) {
+        val trimmed = input.trim()
+        if (trimmed.isBlank()) return
+
+        // If the user entered a 6-character room code (e.g. FBE774 or ROOM-FBE774)
+        if (!trimmed.contains(":") && !trimmed.startsWith("http")) {
+            _uiState.value = _uiState.value.copy(isSearchingHost = true)
+            viewModelScope.launch {
+                val hostUrl = NetworkUtils.findHostByRoomCode(trimmed)
+                _uiState.value = _uiState.value.copy(isSearchingHost = false)
+                if (hostUrl != null) {
+                    multiplayerClient.connect(hostUrl)
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        errorMessage = "Could not find Host with code $trimmed on this Wi-Fi. Ensure both phones are on the same network.",
+                    )
+                }
+            }
+        } else {
+            multiplayerClient.connect(trimmed)
+        }
     }
 
     fun claimSeatAsClient(playerId: String) {
@@ -217,6 +263,7 @@ class PokerViewModel : ViewModel() {
                 players = pIds,
             )
             service.createSession(newSession)
+            _uiState.value = _uiState.value.copy(hostPlayerId = pIds.first().playerId)
             startNewHand(newSession, newSession.dealerPlayerId)
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(errorMessage = e.message)

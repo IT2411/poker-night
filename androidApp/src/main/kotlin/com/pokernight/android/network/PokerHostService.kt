@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.io.File
 
 class PokerHostService : Service() {
 
@@ -30,6 +31,8 @@ class PokerHostService : Service() {
 
     private var server: PokerHostServer? = null
     private var localIp: String = "127.0.0.1"
+
+    var onClientActionReceived: ((BettingState) -> Unit)? = null
 
     private val _isHosting = MutableStateFlow(false)
     val isHosting: StateFlow<Boolean> = _isHosting.asStateFlow()
@@ -63,10 +66,24 @@ class PokerHostService : Service() {
         localIp = NetworkUtils.getLocalIpAddress()
         val newServer = PokerHostServer(port = port)
 
-        // Wire up local Android asset loader for web client files
+        newServer.onClientActionApplied = { updatedState ->
+            serviceScope.launch {
+                onClientActionReceived?.invoke(updatedState)
+            }
+        }
+
         newServer.webAssetProvider = { fileName ->
             try {
                 assets.open("web/$fileName").use { it.readBytes() }
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        newServer.apkProvider = {
+            try {
+                val sourceDir = applicationInfo.sourceDir
+                File(sourceDir).readBytes()
             } catch (_: Exception) {
                 null
             }
@@ -79,7 +96,10 @@ class PokerHostService : Service() {
         _hostUrl.value = "http://$localIp:$port"
         _isHosting.value = true
 
-        newServer.start()
+        try {
+            newServer.start()
+        } catch (_: Exception) {
+        }
 
         serviceScope.launch {
             newServer.connectedCount.collect { count ->
@@ -88,16 +108,25 @@ class PokerHostService : Service() {
             }
         }
 
-        startForeground(NOTIFICATION_ID, buildNotification())
+        try {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        } catch (_: Throwable) {
+        }
     }
 
     fun stopHosting() {
-        server?.stop()
+        try {
+            server?.stop()
+        } catch (_: Exception) {
+        }
         server = null
         _isHosting.value = false
         _connectedCount.value = 0
         _hostUrl.value = ""
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } catch (_: Throwable) {
+        }
         stopSelf()
     }
 
@@ -138,13 +167,19 @@ class PokerHostService : Service() {
 
     private fun updateNotification() {
         if (!_isHosting.value) return
-        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, buildNotification())
+        try {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(NOTIFICATION_ID, buildNotification())
+        } catch (_: Throwable) {
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        server?.stop()
+        try {
+            server?.stop()
+        } catch (_: Exception) {
+        }
         server = null
     }
 

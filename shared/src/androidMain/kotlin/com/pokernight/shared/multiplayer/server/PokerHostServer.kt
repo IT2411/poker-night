@@ -11,7 +11,9 @@ import com.pokernight.shared.multiplayer.protocol.ClientPayload
 import com.pokernight.shared.multiplayer.protocol.ServerMessage
 import com.pokernight.shared.multiplayer.protocol.ServerPayload
 import com.pokernight.shared.multiplayer.sanitizer.StateSanitizer
+import io.ktor.http.ContentDisposition
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
@@ -19,6 +21,7 @@ import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondBytes
 import io.ktor.server.response.respondText
@@ -60,12 +63,20 @@ class PokerHostServer(
     private var stateRevision: Long = 1L
     private var lastRecordedHandNumber: Int = -1
 
+    var hostPlayerId: PlayerId? = null
     var webAssetProvider: ((path: String) -> ByteArray?)? = null
+    var apkProvider: (() -> ByteArray?)? = null
+
+    // Real-time synchronization callback to update Android Host UI when a client acts
+    var onClientActionApplied: ((BettingState) -> Unit)? = null
 
     private val processedActions = ConcurrentHashMap<String, ServerPayload.ActionAck>()
 
     private val _connectedCount = MutableStateFlow(0)
     val connectedCount: StateFlow<Int> = _connectedCount.asStateFlow()
+
+    val activeBettingState: BettingState?
+        get() = currentBettingState
 
     fun updateGameState(session: Session, bettingState: BettingState?) {
         this.currentSession = session
@@ -104,8 +115,8 @@ class PokerHostServer(
                         call.respond(HttpStatusCode.ServiceUnavailable, "No active session")
                         return@get
                     }
-                    val occupiedPlayers = sessionRegistry.getAllClients().mapNotNull { it.playerId }.toSet()
-                    val seats = session.players.map { sp ->
+                    val occupiedPlayers = (sessionRegistry.getAllClients().mapNotNull { it.playerId } + listOfNotNull(hostPlayerId)).toSet()
+                    val guestSeats = session.players.filter { it.seatIndex != 0 }.map { sp ->
                         AvailableSeatDto(
                             playerId = sp.playerId.value,
                             displayName = sp.playerId.value.substringAfterLast("-"),
@@ -116,13 +127,28 @@ class PokerHostServer(
                     val lobby: ServerPayload = ServerPayload.RoomLobby(
                         roomId = roomId,
                         sessionName = session.name,
-                        availableSeats = seats,
+                        availableSeats = guestSeats,
                         requiresPairingToken = true,
                     )
                     call.respondText(
                         json.encodeToString<ServerPayload>(lobby),
                         ContentType.Application.Json,
                     )
+                }
+
+                get("/download/poker-night.apk") {
+                    val apkBytes = apkProvider?.invoke()
+                    if (apkBytes != null) {
+                        call.response.header(
+                            HttpHeaders.ContentDisposition,
+                            ContentDisposition.Attachment
+                                .withParameter(ContentDisposition.Parameters.FileName, "poker-night.apk")
+                                .toString(),
+                        )
+                        call.respondBytes(apkBytes, ContentType.Application.OctetStream)
+                    } else {
+                        call.respond(HttpStatusCode.NotFound, "APK not available")
+                    }
                 }
 
                 get("/") {
@@ -219,11 +245,24 @@ class PokerHostServer(
                 }
 
                 val pId = PlayerId(payload.requestedPlayerId)
+                val sessionObj = currentSession
+                val targetPlayer = sessionObj?.players?.firstOrNull { it.playerId == pId }
+
+                if (targetPlayer == null || targetPlayer.seatIndex == 0) {
+                    sessionRegistry.sendMessage(
+                        session,
+                        ServerMessage(
+                            stateRevision = stateRevision,
+                            ackActionId = clientMsg.actionId,
+                            errorMessage = "Seat 1 is reserved exclusively for the Table Host",
+                            payload = ServerPayload.ActionNack(clientMsg.actionId, "Seat 1 is reserved exclusively for the Table Host"),
+                        ),
+                    )
+                    return
+                }
+
                 val newSeatToken = UUID.randomUUID().toString()
                 sessionRegistry.bindSeat(connectionId, newSeatToken, pId)
-
-                val sessionObj = currentSession
-                val seatIndex = sessionObj?.players?.firstOrNull { it.playerId == pId }?.seatIndex ?: 0
 
                 sessionRegistry.sendMessage(
                     session,
@@ -233,7 +272,7 @@ class PokerHostServer(
                         payload = ServerPayload.SeatConfirmed(
                             seatToken = newSeatToken,
                             playerId = pId.value,
-                            seatIndex = seatIndex,
+                            seatIndex = targetPlayer.seatIndex,
                         ),
                     ),
                 )
@@ -303,6 +342,9 @@ class PokerHostServer(
                         ),
                     )
                     broadcastSanitizedState()
+
+                    // Instantly notify and update the Host Android screen!
+                    onClientActionApplied?.invoke(updated)
                 } catch (e: Exception) {
                     sessionRegistry.sendMessage(
                         session,

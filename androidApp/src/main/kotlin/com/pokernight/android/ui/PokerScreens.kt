@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,7 +30,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Style
-import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -41,6 +41,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -78,6 +79,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pokernight.android.network.QrCodeGenerator
@@ -155,7 +157,7 @@ fun PokerApp(viewModel: PokerViewModel) {
         )
     }
 
-    if (showQrDialog && state.hostingStatus.isHosting) {
+    if (showQrDialog) {
         HostQrDialog(
             hostingStatus = state.hostingStatus,
             onDismiss = { showQrDialog = false },
@@ -199,6 +201,34 @@ fun PokerApp(viewModel: PokerViewModel) {
                             unselectedTextColor = Color.LightGray,
                         ),
                     )
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                Text("Multiplayer Server", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                                Text(
+                                    text = if (state.hostingStatus.isHosting) "${state.hostingStatus.connectedClients} connected" else "Offline",
+                                    fontSize = 11.sp,
+                                    color = if (state.hostingStatus.isHosting) Color(0xFF81C784) else Color.Gray,
+                                )
+                            }
+                            Switch(
+                                checked = state.hostingStatus.isHosting,
+                                onCheckedChange = { viewModel.toggleHosting(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color(0xFFFFD54F),
+                                    checkedTrackColor = Color(0xFF2E7D32),
+                                ),
+                            )
+                        }
+                    }
 
                     NavigationDrawerItem(
                         icon = { Icon(Icons.Default.MonetizationOn, contentDescription = null, tint = Color(0xFFFFD54F)) },
@@ -342,7 +372,12 @@ fun HostQrDialog(
     hostingStatus: HostingStatus,
     onDismiss: () -> Unit,
 ) {
-    val fullJoinUrl = "${hostingStatus.hostUrl}/join?room=${hostingStatus.roomId}&pair=${hostingStatus.pairingSecret}"
+    val fullJoinUrl = if (hostingStatus.hostUrl.isNotBlank()) {
+        "${hostingStatus.hostUrl}/join?room=${hostingStatus.roomId}&pair=${hostingStatus.pairingSecret}"
+    } else {
+        "http://127.0.0.1:8080/join"
+    }
+
     val qrBitmap = remember(fullJoinUrl) {
         QrCodeGenerator.generateQrBitmap(fullJoinUrl, sizePx = 512)
     }
@@ -378,13 +413,13 @@ fun HostQrDialog(
                 )
 
                 Text(
-                    text = "Web URL: ${hostingStatus.hostUrl}",
+                    text = "URL: ${hostingStatus.hostUrl}",
                     fontSize = 13.sp,
                     color = Color(0xFFA5D6A7),
                 )
 
                 Text(
-                    text = "Scan with any phone camera (iPhone or Android) on the same Wi-Fi to join!",
+                    text = "Any phone camera (iPhone or Android) on the same Wi-Fi can scan to play instantly in their browser or download the APK!",
                     fontSize = 11.sp,
                     color = Color.LightGray,
                 )
@@ -403,64 +438,8 @@ fun HostQrDialog(
 }
 
 @Composable
-fun HostingStatusHeader(viewModel: PokerViewModel) {
-    val state by viewModel.uiState.collectAsState()
-    val status = state.hostingStatus
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = if (status.isHosting) Color(0xFF1E3A24) else Color(0xFF212B23),
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(horizontal = 12.dp, vertical = 8.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Wifi,
-                    contentDescription = null,
-                    tint = if (status.isHosting) Color(0xFF81C784) else Color.Gray,
-                    modifier = Modifier.size(20.dp),
-                )
-                Column {
-                    Text(
-                        text = if (status.isHosting) "Host Active: ${status.roomId}" else "Multiplayer Server",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = if (status.isHosting) Color(0xFFFFD54F) else Color.LightGray,
-                    )
-                    if (status.isHosting) {
-                        Text(
-                            text = "${status.hostUrl} | ${status.connectedClients} connected",
-                            fontSize = 11.sp,
-                            color = Color.White,
-                        )
-                    }
-                }
-            }
-
-            Switch(
-                checked = status.isHosting,
-                onCheckedChange = { viewModel.toggleHosting(it) },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = Color(0xFFFFD54F),
-                    checkedTrackColor = Color(0xFF2E7D32),
-                ),
-            )
-        }
-    }
-}
-
-@Composable
 fun SessionSetupScreen(viewModel: PokerViewModel) {
+    val state by viewModel.uiState.collectAsState()
     var isHostMode by remember { mutableStateOf(true) }
     var joinUrlText by remember { mutableStateOf("") }
 
@@ -485,9 +464,8 @@ fun SessionSetupScreen(viewModel: PokerViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        // Mode Selector: Host Session vs Join as Player
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -515,7 +493,36 @@ fun SessionSetupScreen(viewModel: PokerViewModel) {
         }
 
         if (isHostMode) {
-            HostingStatusHeader(viewModel)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.Wifi, contentDescription = null, tint = if (state.hostingStatus.isHosting) Color(0xFF81C784) else Color.Gray)
+                        Column {
+                            Text("Enable Multiplayer Room", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                            Text(
+                                text = if (state.hostingStatus.isHosting) "Server will start on game creation" else "Offline local game only",
+                                fontSize = 11.sp,
+                                color = Color.LightGray,
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = state.hostingStatus.isHosting,
+                        onCheckedChange = { viewModel.toggleHosting(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color(0xFFFFD54F),
+                            checkedTrackColor = Color(0xFF2E7D32),
+                        ),
+                    )
+                }
+            }
 
             OutlinedTextField(
                 value = sessionName,
@@ -556,7 +563,7 @@ fun SessionSetupScreen(viewModel: PokerViewModel) {
             OutlinedTextField(
                 value = playerNamesText,
                 onValueChange = { playerNamesText = it },
-                label = { Text("Players (comma-separated, clockwise)") },
+                label = { Text("Players (comma-separated, Seat 1 = Host)") },
                 colors = tfColors,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -564,7 +571,7 @@ fun SessionSetupScreen(viewModel: PokerViewModel) {
             Text(
                 text = "Denomination: 1 chip = ₹0.01 (1 paise)",
                 color = Color.LightGray,
-                fontSize = 13.sp,
+                fontSize = 12.sp,
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -583,13 +590,12 @@ fun SessionSetupScreen(viewModel: PokerViewModel) {
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
+                    .height(52.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
             ) {
-                Text("Start Session as Host", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Start Session as Host", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.White)
             }
         } else {
-            // Join Mode
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
@@ -597,7 +603,7 @@ fun SessionSetupScreen(viewModel: PokerViewModel) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Connect to Host Phone", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFFFFD54F))
                     Text(
-                        "Paste the Host Room Link or enter Host IP:Port (e.g. 192.168.1.105:8080)",
+                        "Enter Room Code (e.g. FBE774) or Host IP:Port",
                         fontSize = 12.sp,
                         color = Color.LightGray,
                     )
@@ -605,7 +611,7 @@ fun SessionSetupScreen(viewModel: PokerViewModel) {
                     OutlinedTextField(
                         value = joinUrlText,
                         onValueChange = { joinUrlText = it },
-                        label = { Text("Host URL or IP:Port") },
+                        label = { Text("Room Code (e.g. FBE774) or URL") },
                         colors = tfColors,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -704,38 +710,34 @@ fun ClientPlayerTableScreen(viewModel: PokerViewModel) {
     val privateState = snap.privateState
     val legal = privateState.legalActions
 
-    var isPeekingCards by remember { mutableStateOf(false) }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // Table HUD Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
         ) {
             Column(
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier.padding(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
                     text = "POT: ${viewModel.formatChipValue(table.totalPotChips)}",
-                    fontSize = 20.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFFFD54F),
                 )
                 Text(
                     text = "Street: ${table.street} | Live Bet: ${table.currentLiveBet}",
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     color = Color.LightGray,
                 )
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(top = 8.dp),
+                    modifier = Modifier.padding(top = 6.dp),
                 ) {
                     if (table.communityCards.isEmpty()) {
                         Text("No community cards yet", color = Color.Gray, fontSize = 12.sp)
@@ -748,12 +750,11 @@ fun ClientPlayerTableScreen(viewModel: PokerViewModel) {
             }
         }
 
-        // Seated Players List
+        Spacer(modifier = Modifier.height(6.dp))
+
         LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(table.players) { p ->
                 val isMe = p.playerId == clientState.myPlayerId
@@ -768,7 +769,7 @@ fun ClientPlayerTableScreen(viewModel: PokerViewModel) {
                     ),
                 ) {
                     Row(
-                        modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                        modifier = Modifier.padding(8.dp).fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -777,20 +778,21 @@ fun ClientPlayerTableScreen(viewModel: PokerViewModel) {
                                 Text(
                                     text = "${p.displayName} ${if (isMe) "(You)" else ""}",
                                     fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
                                     color = if (p.isFolded) Color.Gray else Color.White,
                                 )
                                 if (p.isDealer) {
-                                    Text(" (DEALER)", color = Color(0xFFFFB300), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                    Text(" (DEALER)", color = Color(0xFFFFB300), fontWeight = FontWeight.Bold, fontSize = 10.sp)
                                 }
                             }
-                            Text("Stack: ${viewModel.formatChipValue(p.remainingStack)}", fontSize = 12.sp, color = Color.LightGray)
+                            Text("Stack: ${viewModel.formatChipValue(p.remainingStack)}", fontSize = 11.sp, color = Color.LightGray)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text("Bet: ${p.streetContribution}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFFFD54F))
                             if (p.isFolded) {
-                                Text("FOLDED", color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("FOLDED", color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             } else if (p.isAllIn) {
-                                Text("ALL-IN", color = Color.Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("ALL-IN", color = Color.Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -798,65 +800,8 @@ fun ClientPlayerTableScreen(viewModel: PokerViewModel) {
             }
         }
 
-        // Private Hole Cards Box
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF162B1C)),
-            border = androidx.compose.foundation.BorderStroke(2.dp, Color(0xFF2E7D32)),
-        ) {
-            Column(
-                modifier = Modifier.padding(10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("YOUR HOLE CARDS", color = Color(0xFFFFD54F), fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    Button(
-                        onClick = { isPeekingCards = !isPeekingCards },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                    ) {
-                        Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (isPeekingCards) "Hide" else "Peek Cards", fontSize = 11.sp)
-                    }
-                }
+        Spacer(modifier = Modifier.height(6.dp))
 
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.padding(top = 6.dp),
-                ) {
-                    val cards = privateState.holeCards
-                    if (cards != null && cards.size == 2 && isPeekingCards) {
-                        ClientCardDtoView(cards[0])
-                        ClientCardDtoView(cards[1])
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(width = 50.dp, height = 44.dp)
-                                .background(Color(0xFF1E2E22), RoundedCornerShape(4.dp))
-                                .border(1.dp, Color(0xFF455A64), RoundedCornerShape(4.dp)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text("🂠", fontSize = 24.sp, color = Color.Gray)
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(width = 50.dp, height = 44.dp)
-                                .background(Color(0xFF1E2E22), RoundedCornerShape(4.dp))
-                                .border(1.dp, Color(0xFF455A64), RoundedCornerShape(4.dp)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text("🂠", fontSize = 24.sp, color = Color.Gray)
-                        }
-                    }
-                }
-            }
-        }
-
-        // Active Player Turn Controls
         if (privateState.isYourTurn && legal != null) {
             ClientTurnActionsBar(legal = legal) { type, amount ->
                 viewModel.sendClientAction(type, amount)
@@ -866,7 +811,7 @@ fun ClientPlayerTableScreen(viewModel: PokerViewModel) {
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF142417)),
             ) {
-                Box(modifier = Modifier.padding(14.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.padding(12.dp).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text("Waiting for other players to act...", color = Color.Gray, fontSize = 13.sp)
                 }
             }
@@ -882,14 +827,23 @@ fun ClientTurnActionsBar(
     var raiseText by remember(legal.minRaiseTo) { mutableStateOf(legal.minRaiseTo.toString()) }
     var betText by remember(legal.minBetAmount) { mutableStateOf(legal.minBetAmount.toString()) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    val tfColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color.White,
+        unfocusedTextColor = Color.White,
+        focusedBorderColor = Color(0xFFFFD54F),
+        unfocusedBorderColor = Color(0xFF81C784),
+        focusedContainerColor = Color(0xFF142417),
+        unfocusedContainerColor = Color(0xFF142417),
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (legal.canBet) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Row(
-                    modifier = Modifier.padding(8.dp).fillMaxWidth(),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -898,8 +852,15 @@ fun ClientTurnActionsBar(
                         value = betText,
                         onValueChange = { betText = it.filter { ch -> ch.isDigit() } },
                         singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            color = Color.White,
+                        ),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.size(width = 110.dp, height = 46.dp),
+                        colors = tfColors,
+                        modifier = Modifier.width(110.dp).height(54.dp),
                     )
                 }
             }
@@ -911,7 +872,7 @@ fun ClientTurnActionsBar(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Row(
-                    modifier = Modifier.padding(8.dp).fillMaxWidth(),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -920,66 +881,79 @@ fun ClientTurnActionsBar(
                         value = raiseText,
                         onValueChange = { raiseText = it.filter { ch -> ch.isDigit() } },
                         singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            color = Color.White,
+                        ),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.size(width = 110.dp, height = 46.dp),
+                        colors = tfColors,
+                        modifier = Modifier.width(110.dp).height(54.dp),
                     )
                 }
             }
         }
 
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             if (legal.canFold) {
                 Button(
                     onClick = { onAction(ActionType.FOLD, 0L) },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Fold", fontWeight = FontWeight.Bold)
+                    Text("Fold", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 }
             }
             if (legal.canCheck) {
                 Button(
                     onClick = { onAction(ActionType.CHECK, 0L) },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Check", fontWeight = FontWeight.Bold)
+                    Text("Check", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 }
             }
             if (legal.canCall) {
                 Button(
                     onClick = { onAction(ActionType.CALL, 0L) },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Call ${legal.callAmount}", fontWeight = FontWeight.Bold)
+                    Text("Call ${legal.callAmount}", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 }
             }
             if (legal.canBet) {
                 Button(
                     onClick = { onAction(ActionType.BET, betText.toLongOrNull() ?: legal.minBetAmount) },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Bet", fontWeight = FontWeight.Bold)
+                    Text("Bet", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 }
             }
             if (legal.canRaise) {
                 Button(
                     onClick = { onAction(ActionType.RAISE, raiseText.toLongOrNull() ?: legal.minRaiseTo) },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Raise", fontWeight = FontWeight.Bold)
+                    Text("Raise", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 }
             }
             if (legal.canAllIn) {
                 Button(
                     onClick = { onAction(ActionType.ALL_IN, 0L) },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("All-In", fontWeight = FontWeight.Bold)
+                    Text("All-In", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 }
             }
         }
@@ -999,13 +973,13 @@ fun ClientCardDtoView(cardDto: CardDto) {
     Box(
         modifier = Modifier
             .background(Color.White, RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 6.dp, vertical = 3.dp),
     ) {
         Text(
             text = "${cardDto.rank}$suitSymbol",
             color = if (isRed) Color(0xFFFF5252) else Color.Black,
             fontWeight = FontWeight.Bold,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
         )
     }
 }
@@ -1015,41 +989,42 @@ fun LiveHandScreen(viewModel: PokerViewModel) {
     val state by viewModel.uiState.collectAsState()
     val liveState = state.liveState ?: return
     val legal = state.legalActions
+    val hostPlayerId = state.hostPlayerId
+
+    val isHostTurn = hostPlayerId != null && liveState.activePlayerId == hostPlayerId
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        HostingStatusHeader(viewModel)
-
+        // 1. Table HUD Card
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
         ) {
             Column(
-                modifier = Modifier.padding(12.dp),
+                modifier = Modifier.padding(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text(
                     text = "POT: ${viewModel.formatChipValue(liveState.hand.totalPotChips)}",
-                    fontSize = 20.sp,
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFFFD54F),
                 )
                 Text(
                     text = "Street: ${liveState.hand.currentStreet} | Live Bet: ${liveState.currentLiveBet}",
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     color = Color.LightGray,
                 )
 
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(top = 8.dp),
+                    modifier = Modifier.padding(top = 6.dp),
                 ) {
                     if (liveState.hand.communityCards.isEmpty()) {
-                        Text("No community cards yet", color = Color.Gray, fontSize = 12.sp)
+                        Text("No community cards yet", color = Color.Gray, fontSize = 11.sp)
                     } else {
                         liveState.hand.communityCards.forEach { card ->
                             CardView(card)
@@ -1059,22 +1034,26 @@ fun LiveHandScreen(viewModel: PokerViewModel) {
             }
         }
 
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // 2. Seated Players List (Takes flexible middle space)
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             items(liveState.hand.players) { player ->
                 val isTurn = player.playerId == liveState.activePlayerId
                 val isDealer = player.playerId == liveState.hand.dealerPlayerId
+                val isHost = player.playerId == hostPlayerId
 
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .then(
                             if (isTurn) {
-                                Modifier.border(2.dp, Color(0xFFFFD54F), RoundedCornerShape(12.dp))
+                                Modifier.border(2.dp, Color(0xFFFFD54F), RoundedCornerShape(8.dp))
                             } else {
                                 Modifier
                             },
@@ -1089,7 +1068,7 @@ fun LiveHandScreen(viewModel: PokerViewModel) {
                 ) {
                     Row(
                         modifier = Modifier
-                            .padding(10.dp)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
                             .fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
@@ -1097,8 +1076,9 @@ fun LiveHandScreen(viewModel: PokerViewModel) {
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = player.playerId.value.substringAfterLast("-"),
+                                    text = "${player.playerId.value.substringAfterLast("-")} ${if (isHost) "(Host)" else ""}",
                                     fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
                                     color = if (player.folded) Color.Gray else Color.White,
                                 )
                                 if (isDealer) {
@@ -1106,27 +1086,27 @@ fun LiveHandScreen(viewModel: PokerViewModel) {
                                         text = " (DEALER)",
                                         color = Color(0xFFFFB300),
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
+                                        fontSize = 10.sp,
                                     )
                                 }
                             }
                             Text(
                                 text = "Stack: ${viewModel.formatChipValue(player.remainingStack)}",
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 color = Color.LightGray,
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
                                 text = "Bet: ${player.streetContribution}",
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFFFFD54F),
                             )
                             if (player.folded) {
-                                Text("FOLDED", color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("FOLDED", color = Color.Red, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             } else if (player.allIn) {
-                                Text("ALL-IN", color = Color.Cyan, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("ALL-IN", color = Color.Cyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -1134,9 +1114,22 @@ fun LiveHandScreen(viewModel: PokerViewModel) {
             }
         }
 
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // 3. Action Controls PINNED AT BOTTOM
         if (liveState.isRoundComplete || liveState.isHandCompleteByFold) {
             RoundCompleteControls(viewModel)
         } else if (legal != null) {
+            val activeName = liveState.activePlayerId?.value?.substringAfterLast("-") ?: "Player"
+            if (!isHostTurn && hostPlayerId != null) {
+                Text(
+                    text = "Action is on $activeName (Acting on phone or override below):",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFFFFD54F),
+                    modifier = Modifier.padding(bottom = 2.dp),
+                )
+            }
             ActiveBettingControls(legal, viewModel)
         }
     }
@@ -1150,113 +1143,84 @@ fun ActiveBettingControls(legal: LegalActions, viewModel: PokerViewModel) {
     var betText by remember(legal.minBetAmount) { mutableStateOf(legal.minBetAmount.toString()) }
     var raiseText by remember(legal.minRaiseTo) { mutableStateOf(legal.minRaiseTo.toString()) }
 
-    var sliderBetValue by remember(legal.minBetAmount) { mutableFloatStateOf(legal.minBetAmount.toFloat()) }
-    var sliderRaiseValue by remember(legal.minRaiseTo) { mutableFloatStateOf(legal.minRaiseTo.toFloat()) }
-
     val tfColors = OutlinedTextFieldDefaults.colors(
         focusedTextColor = Color.White,
         unfocusedTextColor = Color.White,
         focusedBorderColor = Color(0xFFFFD54F),
         unfocusedBorderColor = Color(0xFF81C784),
-        focusedLabelColor = Color(0xFFFFD54F),
-        unfocusedLabelColor = Color.LightGray,
         focusedContainerColor = Color(0xFF142417),
         unfocusedContainerColor = Color(0xFF142417),
     )
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (legal.canBet) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Opening Bet:",
-                            color = Color(0xFFFFD54F),
-                            fontSize = 14.sp,
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Opening Bet:", color = Color(0xFFFFD54F), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        value = betText,
+                        onValueChange = { str -> betText = str.filter { it.isDigit() } },
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                        )
-                        OutlinedTextField(
-                            value = betText,
-                            onValueChange = { str ->
-                                val clean = str.filter { it.isDigit() }
-                                betText = clean
-                                val num = clean.toLongOrNull() ?: legal.minBetAmount
-                                sliderBetValue = num.toFloat().coerceIn(legal.minBetAmount.toFloat(), legal.maxBetAmount.toFloat())
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            colors = tfColors,
-                            singleLine = true,
-                            modifier = Modifier.size(width = 130.dp, height = 50.dp),
-                        )
-                    }
+                            textAlign = TextAlign.Center,
+                            color = Color.White,
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = tfColors,
+                        modifier = Modifier.width(110.dp).height(54.dp),
+                    )
+                }
 
-                    if (legal.maxBetAmount > legal.minBetAmount) {
-                        val betSteps = ((legal.maxBetAmount - legal.minBetAmount) / 5).toInt().coerceAtMost(30)
-                        Slider(
-                            value = sliderBetValue,
-                            onValueChange = {
-                                val rounded = (Math.round(it / 5.0) * 5).toLong()
-                                sliderBetValue = rounded.toFloat()
-                                betText = rounded.toString()
-                            },
-                            valueRange = legal.minBetAmount.toFloat()..legal.maxBetAmount.toFloat(),
-                            steps = betSteps,
-                        )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)) {
+                    Button(
+                        onClick = { betText = legal.minBetAmount.toString() },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    ) {
+                        Text("Min", fontSize = 10.sp)
                     }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                        Button(
-                            onClick = {
-                                betText = legal.minBetAmount.toString()
-                                sliderBetValue = legal.minBetAmount.toFloat()
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                        ) {
-                            Text("Min", fontSize = 11.sp)
-                        }
-                        Button(
-                            onClick = {
-                                val current = betText.toLongOrNull() ?: legal.minBetAmount
-                                val next = (current + 5L).coerceAtMost(legal.maxBetAmount)
-                                betText = next.toString()
-                                sliderBetValue = next.toFloat()
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                        ) {
-                            Text("+5", fontSize = 11.sp)
-                        }
-                        Button(
-                            onClick = {
-                                val current = betText.toLongOrNull() ?: legal.minBetAmount
-                                val next = (current + 10L).coerceAtMost(legal.maxBetAmount)
-                                betText = next.toString()
-                                sliderBetValue = next.toFloat()
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                        ) {
-                            Text("+10", fontSize = 11.sp)
-                        }
-                        Button(
-                            onClick = {
-                                val half = (totalPot / 2).coerceIn(legal.minBetAmount, legal.maxBetAmount)
-                                betText = half.toString()
-                                sliderBetValue = half.toFloat()
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                        ) {
-                            Text("1/2 Pot", fontSize = 11.sp)
-                        }
+                    Button(
+                        onClick = {
+                            val current = betText.toLongOrNull() ?: legal.minBetAmount
+                            betText = (current + 5L).coerceAtMost(legal.maxBetAmount).toString()
+                        },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    ) {
+                        Text("+5", fontSize = 10.sp)
+                    }
+                    Button(
+                        onClick = {
+                            val current = betText.toLongOrNull() ?: legal.minBetAmount
+                            betText = (current + 10L).coerceAtMost(legal.maxBetAmount).toString()
+                        },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    ) {
+                        Text("+10", fontSize = 10.sp)
+                    }
+                    Button(
+                        onClick = {
+                            val half = (totalPot / 2).coerceIn(legal.minBetAmount, legal.maxBetAmount)
+                            betText = half.toString()
+                        },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    ) {
+                        Text("1/2 Pot", fontSize = 10.sp)
                     }
                 }
             }
@@ -1267,93 +1231,69 @@ fun ActiveBettingControls(legal: LegalActions, viewModel: PokerViewModel) {
                 colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A24)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Raise To:",
-                            color = Color(0xFFFFD54F),
-                            fontSize = 14.sp,
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Raise To:", color = Color(0xFFFFD54F), fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    OutlinedTextField(
+                        value = raiseText,
+                        onValueChange = { str -> raiseText = str.filter { it.isDigit() } },
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                        )
-                        OutlinedTextField(
-                            value = raiseText,
-                            onValueChange = { str ->
-                                val clean = str.filter { it.isDigit() }
-                                raiseText = clean
-                                val num = clean.toLongOrNull() ?: legal.minRaiseTo
-                                sliderRaiseValue = num.toFloat().coerceIn(legal.minRaiseTo.toFloat(), legal.maxRaiseTo.toFloat())
-                            },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            colors = tfColors,
-                            singleLine = true,
-                            modifier = Modifier.size(width = 130.dp, height = 50.dp),
-                        )
-                    }
+                            textAlign = TextAlign.Center,
+                            color = Color.White,
+                        ),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = tfColors,
+                        modifier = Modifier.width(110.dp).height(54.dp),
+                    )
+                }
 
-                    if (legal.maxRaiseTo > legal.minRaiseTo) {
-                        val raiseSteps = ((legal.maxRaiseTo - legal.minRaiseTo) / 5).toInt().coerceAtMost(30)
-                        Slider(
-                            value = sliderRaiseValue,
-                            onValueChange = {
-                                val rounded = (Math.round(it / 5.0) * 5).toLong()
-                                sliderRaiseValue = rounded.toFloat()
-                                raiseText = rounded.toString()
-                            },
-                            valueRange = legal.minRaiseTo.toFloat()..legal.maxRaiseTo.toFloat(),
-                            steps = raiseSteps,
-                        )
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp)) {
+                    Button(
+                        onClick = { raiseText = legal.minRaiseTo.toString() },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                    ) {
+                        Text("Min", fontSize = 10.sp)
                     }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                        Button(
-                            onClick = {
-                                raiseText = legal.minRaiseTo.toString()
-                                sliderRaiseValue = legal.minRaiseTo.toFloat()
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
-                        ) {
-                            Text("Min", fontSize = 11.sp)
-                        }
-                        Button(
-                            onClick = {
-                                val current = raiseText.toLongOrNull() ?: legal.minRaiseTo
-                                val next = (current + 5L).coerceAtMost(legal.maxRaiseTo)
-                                raiseText = next.toString()
-                                sliderRaiseValue = next.toFloat()
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
-                        ) {
-                            Text("+5", fontSize = 11.sp)
-                        }
-                        Button(
-                            onClick = {
-                                val current = raiseText.toLongOrNull() ?: legal.minRaiseTo
-                                val next = (current + 10L).coerceAtMost(legal.maxRaiseTo)
-                                raiseText = next.toString()
-                                sliderRaiseValue = next.toFloat()
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
-                        ) {
-                            Text("+10", fontSize = 11.sp)
-                        }
-                        Button(
-                            onClick = {
-                                val pot = totalPot.coerceIn(legal.minRaiseTo, legal.maxRaiseTo)
-                                raiseText = pot.toString()
-                                sliderRaiseValue = pot.toFloat()
-                            },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
-                        ) {
-                            Text("Pot", fontSize = 11.sp)
-                        }
+                    Button(
+                        onClick = {
+                            val current = raiseText.toLongOrNull() ?: legal.minRaiseTo
+                            raiseText = (current + 5L).coerceAtMost(legal.maxRaiseTo).toString()
+                        },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                    ) {
+                        Text("+5", fontSize = 10.sp)
+                    }
+                    Button(
+                        onClick = {
+                            val current = raiseText.toLongOrNull() ?: legal.minRaiseTo
+                            raiseText = (current + 10L).coerceAtMost(legal.maxRaiseTo).toString()
+                        },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                    ) {
+                        Text("+10", fontSize = 10.sp)
+                    }
+                    Button(
+                        onClick = {
+                            val pot = totalPot.coerceIn(legal.minRaiseTo, legal.maxRaiseTo)
+                            raiseText = pot.toString()
+                        },
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                    ) {
+                        Text("Pot", fontSize = 10.sp)
                     }
                 }
             }
@@ -1361,33 +1301,36 @@ fun ActiveBettingControls(legal: LegalActions, viewModel: PokerViewModel) {
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (legal.canFold) {
                 Button(
                     onClick = { viewModel.executeAction(ActionType.FOLD) },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Fold", fontWeight = FontWeight.Bold)
+                    Text("Fold", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 }
             }
             if (legal.canCheck) {
                 Button(
                     onClick = { viewModel.executeAction(ActionType.CHECK) },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Check", fontWeight = FontWeight.Bold)
+                    Text("Check", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 }
             }
             if (legal.canCall) {
                 Button(
                     onClick = { viewModel.executeAction(ActionType.CALL) },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Call ${legal.callAmount}", fontWeight = FontWeight.Bold)
+                    Text("Call ${legal.callAmount}", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 }
             }
             if (legal.canBet) {
@@ -1396,10 +1339,11 @@ fun ActiveBettingControls(legal: LegalActions, viewModel: PokerViewModel) {
                         val num = betText.toLongOrNull() ?: legal.minBetAmount
                         viewModel.executeAction(ActionType.BET, num)
                     },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Bet", fontWeight = FontWeight.Bold)
+                    Text("Bet", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 }
             }
             if (legal.canRaise) {
@@ -1408,26 +1352,31 @@ fun ActiveBettingControls(legal: LegalActions, viewModel: PokerViewModel) {
                         val num = raiseText.toLongOrNull() ?: legal.minRaiseTo
                         viewModel.executeAction(ActionType.RAISE, num)
                     },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Raise", fontWeight = FontWeight.Bold)
+                    Text("Raise", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 }
             }
             if (legal.canAllIn) {
                 Button(
                     onClick = { viewModel.executeAction(ActionType.ALL_IN) },
+                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A1B9A)),
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("All-In", fontWeight = FontWeight.Bold)
+                    Text("All-In", fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
                 }
             }
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            OutlinedButton(onClick = { viewModel.undoAction() }) {
-                Text("Undo Action", color = Color(0xFFFFD54F), fontWeight = FontWeight.SemiBold)
+            OutlinedButton(
+                onClick = { viewModel.undoAction() },
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Text("Undo Action", color = Color(0xFFFFD54F), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
             }
         }
     }
@@ -1438,14 +1387,14 @@ fun RoundCompleteControls(viewModel: PokerViewModel) {
     val state by viewModel.uiState.collectAsState()
     val liveState = state.liveState ?: return
 
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (liveState.isHandCompleteByFold) {
             Button(
                 onClick = { viewModel.resolveHandWithWinners(emptyMap()) },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp),
+                    .height(48.dp),
             ) {
                 Text("Award Uncontested Pot to Winner", fontWeight = FontWeight.Bold, color = Color.White)
             }
@@ -1461,7 +1410,7 @@ fun RoundCompleteControls(viewModel: PokerViewModel) {
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp),
+                            .height(48.dp),
                     ) {
                         Text("Deal Flop (3 Cards)", fontWeight = FontWeight.Bold, color = Color.White)
                     }
@@ -1472,7 +1421,7 @@ fun RoundCompleteControls(viewModel: PokerViewModel) {
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp),
+                            .height(48.dp),
                     ) {
                         Text("Deal Turn (1 Card)", fontWeight = FontWeight.Bold, color = Color.White)
                     }
@@ -1483,7 +1432,7 @@ fun RoundCompleteControls(viewModel: PokerViewModel) {
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp),
+                            .height(48.dp),
                     ) {
                         Text("Deal River (1 Card)", fontWeight = FontWeight.Bold, color = Color.White)
                     }
@@ -1494,7 +1443,7 @@ fun RoundCompleteControls(viewModel: PokerViewModel) {
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(50.dp),
+                            .height(48.dp),
                     ) {
                         Text("Go to Showdown & Award Pots", fontWeight = FontWeight.Bold, color = Color.White)
                     }
@@ -1503,8 +1452,11 @@ fun RoundCompleteControls(viewModel: PokerViewModel) {
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            OutlinedButton(onClick = { viewModel.undoAction() }) {
-                Text("Undo Action", color = Color(0xFFFFD54F), fontWeight = FontWeight.SemiBold)
+            OutlinedButton(
+                onClick = { viewModel.undoAction() },
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            ) {
+                Text("Undo Action", color = Color(0xFFFFD54F), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
             }
         }
     }
@@ -1571,7 +1523,7 @@ fun PotBreakdownScreen(viewModel: PokerViewModel) {
                 }
             },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-            modifier = Modifier.fillMaxWidth().height(50.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
         ) {
             Text("Back", fontWeight = FontWeight.Bold, color = Color.White)
         }
@@ -1764,7 +1716,7 @@ fun ShowdownScreen(viewModel: PokerViewModel) {
             enabled = allPotsHaveWinners,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
+                .height(52.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF2E7D32),
                 disabledContainerColor = Color(0xFF1B3B22),
@@ -2071,30 +2023,30 @@ fun IntermissionScreen(viewModel: PokerViewModel) {
     val state by viewModel.uiState.collectAsState()
     val session = state.session ?: return
     val nextHandNum = state.completedHands.size + 1
+    val hostPlayerId = session.players.firstOrNull()?.playerId
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        HostingStatusHeader(viewModel)
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column {
-                Text("Intermission", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
-                Text("Preparing Hand #$nextHandNum", color = Color.LightGray, fontSize = 13.sp)
+                Text("Intermission", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFD54F))
+                Text("Preparing Hand #$nextHandNum", color = Color.LightGray, fontSize = 12.sp)
             }
 
             Button(
                 onClick = { viewModel.navigateTo(CurrentScreen.LOANS) },
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
             ) {
-                Text("Handout Loans", fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Handout Loans", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
             }
         }
 
@@ -2117,33 +2069,42 @@ fun IntermissionScreen(viewModel: PokerViewModel) {
             }
         }
 
-        Text("Player Lineup & Stacks:", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
+        Text("Player Lineup & Stacks:", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 14.sp)
 
         LazyColumn(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             items(session.players) { sp ->
                 val isDealer = sp.playerId == session.dealerPlayerId
                 val isSittingOut = sp.status == SessionPlayerStatus.SITTING_OUT
+                val isHost = sp.playerId == hostPlayerId || sp.seatIndex == 0
 
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(
+                            if (isHost) {
+                                Modifier.border(2.dp, Color(0xFFFFD54F), RoundedCornerShape(8.dp))
+                            } else {
+                                Modifier
+                            },
+                        ),
                     colors = CardDefaults.cardColors(
                         containerColor = if (isSittingOut) Color(0xFF242424) else Color(0xFF1E3A24),
                     ),
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                        modifier = Modifier.padding(10.dp).fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = sp.playerId.value.substringAfterLast("-"),
+                                    text = "${sp.playerId.value.substringAfterLast("-")} ${if (isHost) "(Host 📱)" else ""}",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
+                                    fontSize = 15.sp,
                                     color = if (isSittingOut) Color.Gray else Color.White,
                                 )
                                 if (isDealer) {
@@ -2151,26 +2112,27 @@ fun IntermissionScreen(viewModel: PokerViewModel) {
                                         text = " (NEXT DEALER)",
                                         color = Color(0xFFFFB300),
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
+                                        fontSize = 10.sp,
                                     )
                                 }
                             }
                             Text(
                                 text = "Stack: ${viewModel.formatChipValue(sp.currentStack)}",
-                                fontSize = 13.sp,
+                                fontSize = 12.sp,
                                 color = if (isSittingOut) Color.Gray else Color.LightGray,
                             )
                         }
 
                         Button(
                             onClick = { viewModel.toggleSittingOut(sp.playerId) },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isSittingOut) Color(0xFF616161) else Color(0xFF2E7D32),
                             ),
                         ) {
                             Text(
                                 text = if (isSittingOut) "Sitting Out" else "Active",
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 color = Color.White,
                             )
                         }
@@ -2185,13 +2147,13 @@ fun IntermissionScreen(viewModel: PokerViewModel) {
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
+                .height(52.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
         ) {
             Text(
                 text = "Deal Hand #$nextHandNum",
                 fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
+                fontSize = 17.sp,
                 color = Color.White,
             )
         }
@@ -2251,7 +2213,7 @@ fun HistoryScreen(viewModel: PokerViewModel) {
                     viewModel.navigateTo(CurrentScreen.INTERMISSION)
                 }
             },
-            modifier = Modifier.fillMaxWidth().height(50.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
         ) {
             Text("Back", fontWeight = FontWeight.Bold, color = Color.White)

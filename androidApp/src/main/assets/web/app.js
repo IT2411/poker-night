@@ -1,7 +1,5 @@
 (function() {
     let ws = null;
-    let seatToken = localStorage.getItem("poker_seat_token");
-    let myPlayerId = localStorage.getItem("poker_player_id");
     let currentRevision = 1;
     let currentSnapshot = null;
 
@@ -9,7 +7,16 @@
     const pairingToken = urlParams.get("pair") || "";
     const roomId = urlParams.get("room") || "";
 
-    // DOM Elements
+    const storedRoomId = localStorage.getItem("poker_room_id");
+    if (roomId && roomId !== storedRoomId) {
+        localStorage.removeItem("poker_seat_token");
+        localStorage.removeItem("poker_player_id");
+        localStorage.setItem("poker_room_id", roomId);
+    }
+
+    let seatToken = localStorage.getItem("poker_seat_token");
+    let myPlayerId = localStorage.getItem("poker_player_id");
+
     const badge = document.getElementById("connection-badge");
     const lobbyModal = document.getElementById("lobby-modal");
     const seatsList = document.getElementById("seats-list");
@@ -19,14 +26,11 @@
     const liveBetLabel = document.getElementById("live-bet-amount");
     const boardCardsEl = document.getElementById("board-cards");
     const playersListEl = document.getElementById("players-list");
-    const holeCardsEl = document.getElementById("hole-cards");
-    const peekBtn = document.getElementById("peek-toggle-btn");
     const waitingMsg = document.getElementById("waiting-msg");
     const activeControls = document.getElementById("active-controls");
     const raiseBox = document.getElementById("raise-controls-box");
     const targetInput = document.getElementById("target-amount-input");
 
-    // Action Buttons
     const foldBtn = document.getElementById("fold-btn");
     const checkBtn = document.getElementById("check-btn");
     const callBtn = document.getElementById("call-btn");
@@ -48,14 +52,12 @@
             badge.className = "badge badge-connected";
 
             if (seatToken && myPlayerId) {
-                // Reconnect with existing seat token
                 sendMsg({
                     actionId: "reconnect-" + Date.now(),
                     seatToken: seatToken,
                     payload: { type: "reconnect", lastSeenRevision: currentRevision }
                 });
             } else {
-                // Load lobby to claim a seat
                 loadLobbySeats();
             }
         };
@@ -125,9 +127,18 @@
             lobbyModal.classList.add("hidden");
             renderSnapshot(payload.snapshot);
         } else if (payload.type === "action_ack") {
-            // Action accepted
+            // Action acknowledged
         } else if (payload.type === "action_nack" || payload.type === "error") {
-            alert(msg.errorMessage || payload.reason || "Action rejected");
+            const reason = msg.errorMessage || payload.reason || "Action rejected";
+            if (reason.toLowerCase().includes("token")) {
+                localStorage.removeItem("poker_seat_token");
+                localStorage.removeItem("poker_player_id");
+                seatToken = null;
+                myPlayerId = null;
+                loadLobbySeats();
+            } else {
+                alert(reason);
+            }
         }
     }
 
@@ -140,7 +151,6 @@
         streetLabel.textContent = table.street;
         liveBetLabel.textContent = table.currentLiveBet;
 
-        // Render Community Cards
         boardCardsEl.innerHTML = "";
         if (!table.communityCards || table.communityCards.length === 0) {
             boardCardsEl.innerHTML = `<div class="empty-board-text">No community cards yet</div>`;
@@ -148,7 +158,6 @@
             table.communityCards.forEach(c => boardCardsEl.appendChild(createCardEl(c)));
         }
 
-        // Render Players
         playersListEl.innerHTML = "";
         table.players.forEach(p => {
             const row = document.createElement("div");
@@ -167,15 +176,6 @@
             playersListEl.appendChild(row);
         });
 
-        // Render Private Hole Cards
-        holeCardsEl.innerHTML = "";
-        if (privateState.holeCards && privateState.holeCards.length === 2) {
-            privateState.holeCards.forEach(c => holeCardsEl.appendChild(createCardEl(c)));
-        } else {
-            holeCardsEl.innerHTML = `<div class="card card-back">🂠</div><div class="card card-back">🂠</div>`;
-        }
-
-        // Render Turn Controls
         if (privateState.isYourTurn && privateState.legalActions) {
             waitingMsg.classList.add("hidden");
             activeControls.classList.remove("hidden");
@@ -240,7 +240,6 @@
         });
     }
 
-    // Bind Button Click Handlers
     foldBtn.onclick = () => submitAction("FOLD");
     checkBtn.onclick = () => submitAction("CHECK");
     callBtn.onclick = () => submitAction("CALL");
@@ -248,18 +247,6 @@
     raiseBtn.onclick = () => submitAction("RAISE", targetInput.value);
     allinBtn.onclick = () => submitAction("ALL_IN");
 
-    // Touch-to-Peek Hole Cards
-    let isPeeking = false;
-    function setPeeking(peek) {
-        isPeeking = peek;
-        holeCardsEl.classList.toggle("blur-cards", !peek);
-    }
-    peekBtn.addEventListener("mousedown", () => setPeeking(true));
-    peekBtn.addEventListener("mouseup", () => setPeeking(false));
-    peekBtn.addEventListener("touchstart", (e) => { e.preventDefault(); setPeeking(true); });
-    peekBtn.addEventListener("touchend", () => setPeeking(false));
-
-    // Auto-reconnect when user un-locks screen or switches back to tab
     document.addEventListener("visibilitychange", function() {
         if (document.visibilityState === "visible") {
             if (!ws || ws.readyState !== WebSocket.OPEN) connect();
